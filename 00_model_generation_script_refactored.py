@@ -33,6 +33,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from datetime import datetime, timezone
+import json
+
 from typing import Dict, Tuple
 
 import numpy as np
@@ -72,7 +75,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--icao-only", type=str, default="true", help="true/false")
     p.add_argument("--min-samples-per-od", type=int, default=1, help="Minimum samples for OD-specific durations")
     p.add_argument("--seed", type=int, default=None, help="Random seed (for noise/sampling reproducibility)")
-    p.add_argument("--out-dir", type=Path, default=Path("./model_out"))
+    p.add_argument("--out-dir", type=Path, default=Path("./model_out"),
+                   help="Base output directory; an auto-named experiment subfolder will be created inside.")
+    p.add_argument("--flat-out", action="store_true",
+                   help="Write files directly into --out-dir (disable auto-named subfolder).")
 
     args = p.parse_args()
     args.smoothing = str2bool(args.smoothing)
@@ -237,6 +243,10 @@ def build_models(
     if dur_dist.size == 0:
         dur_dist = np.array([60.0, 90.0, 120.0, 180.0], dtype=float)
 
+    # Speed thresholds from global durations (tertiles)
+    q33 = float(np.quantile(dur_dist, 1/3))
+    q66 = float(np.quantile(dur_dist, 2/3))
+
     # OD-specific pools
     od_dur_dist: Dict[Tuple[str,str], np.ndarray] = {}
     for (o, d), g in df_dur.groupby(["origin", "destination"]):
@@ -246,7 +256,7 @@ def build_models(
         else:
             od_dur_dist[(o, d)] = dur_dist
 
-    return dep_counts, od_time_model, tat, od_dur_dist, global_dest_freq
+    return dep_counts, od_time_model, tat, od_dur_dist, global_dest_freq, (q33, q66)
 
 
 # -------------------------
@@ -261,6 +271,7 @@ def save_artifacts(
     tat_dist: np.ndarray,
     od_dur_dist: Dict[Tuple[str,str], np.ndarray],
     global_dest_freq: pd.Series,
+    dur_tertiles: Tuple[float,float],
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -285,12 +296,19 @@ def save_artifacts(
     # tat_dist
     pd.DataFrame({"tat_min": tat_dist}).to_csv(out_dir / "tat_dist.csv", index=False)
 
+    # od_dur_dist with speed_kts via global tertiles
+    q33, q66 = dur_tertiles
+    def duration_to_speed_kts(d: float) -> int:
+        if d < q33: return 430
+        if d < q66: return 450
+        return 480
+
     # od_dur_dist: flatten to rows
     rows = []
     for (o, d), arr in od_dur_dist.items():
         for v in arr:
-            rows.append((o, d, float(v)))
-    odd = pd.DataFrame(rows, columns=["origin","destination","duration_min"]).sort_values(["origin","destination"])
+            rows.append((o, d, float(v), int(duration_to_speed_kts(float(v)))))
+    odd = pd.DataFrame(rows, columns=["origin","destination","duration_min","speed_kts"]).sort_values(["origin","destination","duration_min"])
     odd.to_csv(out_dir / "od_dur_dist.csv", index=False)
 
     # global_dest_freq
@@ -315,7 +333,7 @@ def main():
 
     df = load_filtered(args.csv_path, args.target_day, args.chunksize)
 
-    airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq = build_models(
+    airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq, dur_tertiles = build_models(
         df,
         bin_min=args.bin_min,
         smooth_win=args.smooth_win,
@@ -332,18 +350,41 @@ def main():
         seed=args.seed,
     )
 
+    # --- build auto-named experiment directory ---
+    if args.flat_out:
+        exp_dir = args.out_dir
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+        tag = (
+            f"day-{args.target_day}"
+            f"_bin{args.bin_min}"
+            f"_smooth{'T' if args.smoothing else 'F'}w{args.smooth_win}"
+            f"_eps{args.epsilon:g}"
+            f"_a{args.alpha:g}"
+            f"_back{args.global_backoff:g}"
+            f"_tat{int(args.min_tat)}-{int(args.max_tat)}"
+            f"_dur{int(args.min_dur)}-{int(args.max_dur)}"
+            f"_icao{'T' if args.icao_only else 'F'}"
+            f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
+        )
+        exp_dir = args.out_dir / f"{ts}__{tag}"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    # persist full CLI args for traceability
+    with open(exp_dir / "run_config.json", "w") as fh:
+        json.dump({k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}, fh, indent=2)
+
     save_artifacts(
-        out_dir=args.out_dir,
+        out_dir=exp_dir,
         bin_min=args.bin_min,
         airport_bins=airport_bins,
         od_time_model=od_time_model,
         tat_dist=tat_dist,
         od_dur_dist=od_dur_dist,
         global_dest_freq=global_dest_freq,
+        dur_tertiles=dur_tertiles,
     )
 
-    print(f"Done. Artifacts written to: {args.out_dir.resolve()}")
-
+    print(f"Done. Artifacts written to: {exp_dir.resolve()}")
 
 if __name__ == "__main__":
     main()

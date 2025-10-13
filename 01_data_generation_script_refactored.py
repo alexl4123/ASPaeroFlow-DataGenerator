@@ -23,6 +23,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Tuple
+import json
 
 import numpy as np
 import pandas as pd
@@ -105,21 +106,38 @@ def load_tat(model_dir: Path) -> np.ndarray:
 def load_od_durations(model_dir: Path) -> Tuple[Dict[Tuple[str, str], np.ndarray], np.ndarray]:
     """
     Returns:
-      - od_dur_dist: dict[(origin, dest)] -> np.ndarray of durations (minutes)
-      - dur_dist: global fallback pool (all durations pooled)
+      od_map: dict[(o,d)] -> (durations[], speeds[])
+      glob_dur: durations[] (global fallback)
+      glob_spd: speeds[] (global fallback; if missing speeds, infer by tertiles)
     """
+
     df = pd.read_csv(model_dir / "od_dur_dist.csv")
     if df.empty:
-        fallback = np.array([60.0, 90.0, 120.0, 180.0], dtype=float)
-        return {}, fallback
+        # strong fallback
+        fallback_d = np.array([60.0, 90.0, 120.0, 180.0], dtype=float)
+        # classify by tertiles of fallback
+        q33, q66 = np.quantile(fallback_d, [1/3, 2/3])
+        def sp(x): return 430 if x<q33 else (450 if x<q66 else 480)
+        fallback_s = np.array([sp(x) for x in fallback_d], dtype=int)
+        return {}, fallback_d, fallback_s
 
     df["duration_min"] = df["duration_min"].astype(float)
-    od: Dict[Tuple[str, str], np.ndarray] = {}
-    for (o, d), g in df.groupby(["origin", "destination"], sort=False):
-        od[(str(o), str(d))] = g["duration_min"].to_numpy(dtype=float)
+    if "speed_kts" not in df.columns:
+        # Back-compat: infer speeds via tertiles from observed durations
+        q33, q66 = np.quantile(df["duration_min"].to_numpy(), [1/3, 2/3])
+        df["speed_kts"] = np.where(df["duration_min"] < q33, 430,
+                            np.where(df["duration_min"] < q66, 450, 480)).astype(int)
 
-    dur_dist = df["duration_min"].to_numpy(dtype=float)
-    return od, dur_dist
+    od_map: Dict[Tuple[str,str], Tuple[np.ndarray, np.ndarray]] = {}
+    for (o, d), g in df.groupby(["origin","destination"], sort=False):
+        od_map[(str(o), str(d))] = (
+            g["duration_min"].to_numpy(dtype=float),
+            g["speed_kts"].to_numpy(dtype=int),
+        )
+
+    glob_dur = df["duration_min"].to_numpy(dtype=float)
+    glob_spd = df["speed_kts"].to_numpy(dtype=int)
+    return od_map, glob_dur, glob_spd
 
 
 def load_global_dest_freq(model_dir: Path) -> pd.Series:
@@ -168,7 +186,7 @@ def _pick_dest_time(
     # Hard fallback if everything is empty
     return "XXXX"
 
-
+"""
 def _pick_duration_od(
     origin: str,
     dest: str,
@@ -178,6 +196,13 @@ def _pick_duration_od(
 ) -> float:
     pool = od_dur_dist.get((origin, dest), dur_dist)
     return float(rng.choice(pool)) if pool.size else float(rng.choice(dur_dist))
+"""
+
+def _pick_duration_and_speed(origin: str, dest: str, od_map, glob_dur: np.ndarray, glob_spd: np.ndarray, rng: np.random.Generator):
+    dur_arr, spd_arr = od_map.get((origin, dest), (glob_dur, glob_spd))
+    if dur_arr.size == 0: dur_arr, spd_arr = glob_dur, glob_spd
+    idx = rng.integers(0, dur_arr.size)
+    return float(dur_arr[idx]), int(spd_arr[idx])
 
 
 def _pick_turnaround(tat_dist: np.ndarray, rng: np.random.Generator) -> float:
@@ -197,6 +222,7 @@ def generate_synthetic_day(
     tat_dist: np.ndarray,
     od_dur_dist: Dict[Tuple[str, str], np.ndarray],
     dur_dist: np.ndarray,
+    glob_spd: np.ndarray,
     bin_min: int,
     scale: float = 1.0,
     seed: int | None = 42,
@@ -226,6 +252,7 @@ def generate_synthetic_day(
 
     # 2) Aircraft pools per airport: min-heaps keyed by ready_time
     available: Dict[str, list[tuple[datetime, str]]] = defaultdict(list)
+    aircraft_speed: Dict[str, int] = {}
     flights = []
     ac_counter = 0
     fl_counter = 0
@@ -244,8 +271,12 @@ def generate_synthetic_day(
 
         # Route + duration
         dest = _pick_dest_time(origin, dep_time, od_time_model, global_dest_freq, bin_min, rng)
-        duration_min = _pick_duration_od(origin, dest, od_dur_dist, dur_dist, rng)
-        arr_time = dep_time + timedelta(minutes=duration_min)
+        dur_min, speed_kts = _pick_duration_and_speed(origin, dest, od_dur_dist, dur_dist, glob_spd, rng)
+        arr_time = dep_time + timedelta(minutes=dur_min)
+
+        # Assign aircraft speed on first use
+        if ac_id not in aircraft_speed:
+            aircraft_speed[ac_id] = speed_kts
 
         # Turnaround & push aircraft into dest heap
         tat_min = _pick_turnaround(tat_dist, rng)
@@ -262,8 +293,11 @@ def generate_synthetic_day(
             "departure_time": dep_time.isoformat().replace("+00:00", "Z"),
         })
 
-    return pd.DataFrame(flights)
+    flights_df = pd.DataFrame(flights)
+    aircrafts_df = pd.DataFrame({"aircraft_id": list(aircraft_speed.keys()),
+                                 "speed_kts": [aircraft_speed[a] for a in aircraft_speed]})
 
+    return flights_df, aircrafts_df
 
 # -------------------------
 # CLI
@@ -276,7 +310,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--scale", type=float, default=1.0, help="Scale factor for departures")
     p.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
     p.add_argument("--bin-min", type=int, default=None, help="Override bin minutes (otherwise read from metadata)")
-    p.add_argument("--out", type=Path, default=Path("./synthetic_flights.csv"), help="Output CSV path")
+    p.add_argument("--out-dir", type=Path, default=Path("./data_out"), help="Default output folder")
+    p.add_argument("--flat-out", action="store_true",
+                   help="Write files directly into the parent folder of --out (disable auto-named subfolder).")
+
     return p.parse_args()
 
 
@@ -291,10 +328,10 @@ def main():
     airport_bins = load_airport_bins(model_dir, bin_min)
     od_time_model = load_od_time_model(model_dir)
     tat_dist = load_tat(model_dir)
-    od_dur_dist, dur_dist = load_od_durations(model_dir)
+    od_dur_dist, dur_dist, glob_spd = load_od_durations(model_dir)
     global_dest_freq = load_global_dest_freq(model_dir)
 
-    df_syn = generate_synthetic_day(
+    flights_df, aircrafts_df = generate_synthetic_day(
         day_str=args.day,
         airport_bins=airport_bins,
         od_time_model=od_time_model,
@@ -302,16 +339,47 @@ def main():
         tat_dist=tat_dist,
         od_dur_dist=od_dur_dist,
         dur_dist=dur_dist,
+        glob_spd=glob_spd,
         bin_min=bin_min,
         scale=args.scale,
         seed=args.seed,
     )
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    df_syn.to_csv(args.out, index=False)
-    print(f"Generated {len(df_syn):,} flights for {args.day} (bin={bin_min} min, scale={args.scale}).")
-    print(f"Saved to: {args.out.resolve()}")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    # --- build auto-named experiment directory ---
+    if args.flat_out:
+        exp_dir = args.out_dir
+        out_flights = "flights.csv"
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+        tag = (
+            f"day-{args.day}"
+            f"_scale{args.scale:g}"
+            f"_bin{bin_min}"
+            f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
+            f"_model-{args.model_dir.name}"
+        )
+        exp_dir = args.out_dir / f"{ts}__{tag}"
+        out_flights = exp_dir / "flights.csv"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    out_dir_str = str(args.out_dir)
+    # persist full CLI + resolved values
+    with open(exp_dir / "run_config.json", "w") as fh:
+        cfg = {}
+        var_dict = dict(vars(args))
+        for var in var_dict.keys():
+            cfg[var] = str(var_dict[var])
+        cfg["model_dir"] = str(args.model_dir)
+        cfg["out"] = out_dir_str
+        cfg["resolved_bin_min"] = bin_min
+        json.dump(cfg, fh, indent=2)
 
+    flights_df.to_csv(out_flights, index=False)
+    aircrafts_path = exp_dir / "aircrafts.csv"
+    aircrafts_df.to_csv(aircrafts_path, index=False)
+
+    print(f"Wrote {len(flights_df):,} flights to {out_flights.resolve()}")
+    print(f"Wrote {len(aircrafts_df):,} aircraft rows to {aircrafts_path.resolve()}")
 
 if __name__ == "__main__":
     main()
