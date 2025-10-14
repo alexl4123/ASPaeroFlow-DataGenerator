@@ -1,0 +1,7 @@
+{
+    "target-day":"2019-06-15",
+    "bin-min":"15",
+    "smoothing":"False",
+    "verify-ourairports":"True",
+    "seed":"11904657"
+}

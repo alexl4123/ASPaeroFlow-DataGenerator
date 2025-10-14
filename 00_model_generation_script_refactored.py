@@ -2,7 +2,8 @@
 """
 Flight OD/temporal model builder (CLI)
 
-Reads OpenSky-like flight CSVs, filters to a target day, and exports model artifacts:
+Reads OpenSky-like flight CSVs, filters to either a single target day **or** an inclusive
+date range (possibly across multiple CSVs in a folder), and exports model artifacts:
   - airport_bins: per-airport expected departures per time bin
   - od_time_model: per-(origin, bin) destination probabilities
   - tat_dist: turnaround time samples (minutes)
@@ -27,6 +28,18 @@ Usage (defaults match the original script):
         --icao-only true \
         --min-samples-per-od 1 \
         --out-dir ./model_out
+
+Or, for a date range across multiple files inside a folder:
+    python build_model.py \
+        --csv-path ./flightlist_summer \
+        --date-start 2019-06-15 --date-end 2019-07-15 \
+        --bin-min 60 --smoothing false --icao-only true \
+        --out-dir ./model_out
+
+Using a JSON config (CLI options override config values):
+    python build_model.py \
+        --config ./config.json \
+        --date-start 2019-06-15 --date-end 2019-07-15
 
 """
 from __future__ import annotations
@@ -56,33 +69,82 @@ def parse_args() -> argparse.Namespace:
             return False
         raise argparse.ArgumentError(None, f"Invalid boolean: {v}")
 
+
+    # ---- first pass to get --config (no help to avoid conflicts) ----
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path, default=None)
+    pre_args, _ = pre.parse_known_args()
+
+    # ---- load config if provided ----
+    cfg: dict = {}
+    if pre_args.config is not None:
+        if not pre_args.config.exists():
+            raise FileNotFoundError(f"Config file not found: {pre_args.config}")
+        with open(pre_args.config, "r") as fh:
+            cfg = json.load(fh) or {}
+
+    def cfg_get(key: str, default):
+        return cfg.get(key, default)
+
     p = argparse.ArgumentParser(description="Build OD/time model and export artifacts to CSV.")
-    p.add_argument("--csv-path", type=Path, default=Path("flightlist_20190601_20190630.csv"))
-    p.add_argument("--target-day", type=str, default="2019-06-15", help="UTC day YYYY-MM-DD")
-    p.add_argument("--chunksize", type=int, default=250_000)
+    p.add_argument("--config", type=Path, default=None, help="Path to JSON config file.")
+    p.add_argument("--csv-path", type=Path,
+                    default=Path(cfg_get("csv-path", "flightlist_20190601_20190630.csv")),
+                    help="Path to ourairports airports.csv (used to verify ICAO codes).")
+    p.add_argument("--ourairports-path", type=Path,
+                    default=Path(cfg_get("ourairports-path", "./ourairports/airports.csv")),
+                    help="Path to ourairports airports.csv (used to verify ICAO codes).")
+    p.add_argument("--target-day", type=str,
+                   default=cfg_get("target-day", None), help="(Legacy) UTC day YYYY-MM-DD")
+    p.add_argument("--date-start", type=str,
+                   default=cfg_get("date-start", None), help="UTC inclusive start date YYYY-MM-DD")
+    p.add_argument("--date-end",   type=str,
+                   default=cfg_get("date-end", None), help="UTC inclusive end date YYYY-MM-DD")
+    p.add_argument("--chunksize", type=int, default=int(cfg_get("chunksize", 250_000)))
+ 
 
     # Model inputs (defaults = original script)
-    p.add_argument("--bin-min", type=int, default=60, help="Minutes per time bin")
-    p.add_argument("--smooth-win", type=int, default=3, help="Rolling window (bins) for smoothing")
-    p.add_argument("--epsilon", type=float, default=2.0, help="Laplace noise scale via 1/epsilon; <=0 disables")
-    p.add_argument("--alpha", type=float, default=0.5, help="Dirichlet +alpha smoothing for OD")
-    p.add_argument("--global-backoff", type=float, default=0.05, help="Mixture weight with global dest freq")
-    p.add_argument("--min-tat", type=float, default=0, help="Min turnaround minutes")
-    p.add_argument("--max-tat", type=float, default=60, help="Max turnaround minutes")
-    p.add_argument("--min-dur", type=float, default=1, help="Min duration minutes")
-    p.add_argument("--max-dur", type=float, default=900, help="Max duration minutes")
-    p.add_argument("--smoothing", type=str, default="false", help="true/false")
-    p.add_argument("--icao-only", type=str, default="true", help="true/false")
-    p.add_argument("--min-samples-per-od", type=int, default=1, help="Minimum samples for OD-specific durations")
-    p.add_argument("--seed", type=int, default=None, help="Random seed (for noise/sampling reproducibility)")
-    p.add_argument("--out-dir", type=Path, default=Path("./model_out"),
-                   help="Base output directory; an auto-named experiment subfolder will be created inside.")
+    p.add_argument("--bin-min", type=int, default=int(cfg_get("bin-min", 60)),
+                    help="Minutes per time bin")
+    p.add_argument("--smooth-win", type=int, default=int(cfg_get("smooth-win", 3)),
+                    help="Rolling window (bins) for smoothing")
+    p.add_argument("--epsilon", type=float, default=float(cfg_get("epsilon", 2.0)),
+                    help="Laplace noise scale via 1/epsilon; <=0 disables")
+    p.add_argument("--alpha", type=float, default=float(cfg_get("alpha", 0.5)),
+                    help="Dirichlet +alpha smoothing for OD")
+    p.add_argument("--global-backoff", type=float, default=float(cfg_get("global-backoff", 0.05)),
+                    help="Mixture weight with global dest freq")
+    p.add_argument("--min-tat", type=float, default=float(cfg_get("min-tat", 0)),
+                    help="Min turnaround minutes")
+    p.add_argument("--max-tat", type=float, default=float(cfg_get("max-tat", 60)),
+                    help="Max turnaround minutes")
+    p.add_argument("--min-dur", type=float, default=float(cfg_get("min-dur", 1)),
+                    help="Min duration minutes")
+    p.add_argument("--max-dur", type=float, default=float(cfg_get("max-dur", 900)),
+                    help="Max duration minutes")
+    p.add_argument("--smoothing", type=str, default=str(cfg_get("smoothing", "false")), help="true/false")
+    p.add_argument("--icao-only", type=str, default=str(cfg_get("icao-only", "true")), help="true/false")
+    p.add_argument("--verify-ourairports", type=str, default=str(cfg_get("verify-ourairports", "true")),
+                    help="true/false: verify airports exist in ourairports file (default true).")
+    p.add_argument("--min-samples-per-od", type=int, default=int(cfg_get("min-samples-per-od", 1)),
+                    help="Minimum samples for OD-specific durations")
+    p.add_argument("--seed", type=int, default=(cfg_get("seed", None)),
+                    help="Random seed (for noise/sampling reproducibility)")
+    p.add_argument("--out-dir", type=Path, default=Path(cfg_get("out-dir", "./model_out")),
+                    help="Base output directory; an auto-named experiment subfolder will be created inside.")
+
     p.add_argument("--flat-out", action="store_true",
-                   help="Write files directly into --out-dir (disable auto-named subfolder).")
+                    help="Write files directly into --out-dir (disable auto-named subfolder).")
 
     args = p.parse_args()
     args.smoothing = str2bool(args.smoothing)
     args.icao_only = str2bool(args.icao_only)
+    args.verify_ourairports = str2bool(args.verify_ourairports)
+
+    # Pass-through of config-only features (e.g., geographic regions)
+    args.considered_geographic_regions = cfg.get("considered_geographic_regions", None)
+    args.loaded_config = str(pre_args.config) if pre_args.config is not None else None
+
     return args
 
 
@@ -98,33 +160,143 @@ USECOLS = [
 DROP_COLS = ["number","latitude_1","longitude_1","altitude_1","latitude_2","longitude_2","altitude_2"]
 BAD_TOKENS = {"", "NAN", "NONE", "NULL"}
 
+def _col(df: pd.DataFrame, name: str) -> pd.Series:
+    """Helper to access a column by case-insensitive name; returns empty Series if missing."""
+    matches = [c for c in df.columns if c.lower() == name]
+    return df[matches[0]] if matches else pd.Series(dtype="string")
 
-def load_filtered(csv_path: Path, target_day: str, chunksize: int) -> pd.DataFrame:
-    filtered_chunks = []
-    for chunk in pd.read_csv(
-        csv_path,
-        usecols=USECOLS,
-        dtype="string",
-        chunksize=chunksize,
-        low_memory=False,
-    ):
-        first_day = chunk["firstseen"].str.slice(0, 10)
-        last_day  = chunk["lastseen"].str.slice(0, 10)
-        mask = (first_day == target_day) & (last_day == target_day)
-        if not mask.any():
-            continue
+def load_ourairports_df(path: Path) -> pd.DataFrame:
+    """
+    Load OurAirports CSV and normalize to columns:
+      - icao: 4-letter code (from icao_code or ident/gps_code if looks like ICAO)
+      - lat: float latitude
+      - lon: float longitude
+    """
+    raw = pd.read_csv(path, dtype="string", low_memory=False)
+    s_icao = _col(raw, "icao_code")
+    s_ident = _col(raw, "ident")
+    s_gps = _col(raw, "gps_code")
+    cand = pd.concat([s_icao, s_ident, s_gps], ignore_index=True)
+    icao = cand.dropna().astype(str).str.strip().str.upper()
+    pat = r"^[A-Z]{4}$"
+    icao = icao[icao.str.match(pat)]
+    icao = icao.drop_duplicates().rename("icao")
+    # coordinates (prefer latitude_deg/longitude_deg)
+    lat = pd.to_numeric(_col(raw, "latitude_deg"), errors="coerce").rename("lat")
+    lon = pd.to_numeric(_col(raw, "longitude_deg"), errors="coerce").rename("lon")
+    # Keep one row per airport where possible
+    df = pd.DataFrame({"icao": _col(raw, "icao_code")}).copy()
+    if df["icao"].isna().all():
+        df["icao"] = _col(raw, "ident")
+    if df["icao"].isna().all():
+        df["icao"] = _col(raw, "gps_code")
+    df["icao"] = df["icao"].astype("string").str.strip().str.upper()
+    df["lat"] = lat
+    df["lon"] = lon
+    df = df.dropna(subset=["icao","lat","lon"])
+    df = df[df["icao"].str.match(pat)]
+    df = df.drop_duplicates(subset=["icao"])
+    # Ensure only ICAOs that appear in the overall candidate set (guards weird files)
+    df = df[df["icao"].isin(set(icao))]
+    return df[["icao","lat","lon"]]
 
-        df = chunk.loc[mask].copy()
-        df.drop(columns=DROP_COLS, errors="ignore", inplace=True)
+def _pairs_from_flat_polygon(flat: list) -> list[tuple[float,float]]:
+    if not isinstance(flat, list) or len(flat) < 6 or len(flat) % 2 != 0:
+        raise ValueError("Polygon must be a flat list [lat0,lon0,...,latN,lonN] with N>=2")
+    it = iter(flat)
+    return [(float(lat), float(lon)) for lat, lon in zip(it, it)]
 
-        # Clean origin/destination
-        for c in ["origin", "destination"]:
-            df[c] = df[c].str.strip().str.upper()
-            df[c] = df[c].mask(df[c].isin(BAD_TOKENS))
+def _point_in_poly(lat: float, lon: float, poly: list[tuple[float,float]]) -> bool:
+    # Ray casting in (lon=x, lat=y) space
+    # The algorithm is a typical implementation of the ray-casting algorithm
+    # (counting number of ray intersections until we are out of the polygon)
+    # --> This algorithm counts the number of lines to the right of the point
+    # If this number is even = outside, if it is odd = inside
+    # The ((y1 > y) != (y2 > y)) states that the y-point must be y1 < y < y2 or the other way around
+    # The (x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-15) + x1) is a reformulation of the linear representation:
+    #   -> y1,x1 and y2,x2 define a linear function 
+    #   -> it is: y' = x' * (y2-y1)/(x2-x1) + d
+    #   -> d = y1 - x1 * (y2-y1)/(x2-x1)
+    # ==> Observe: if y > x * (y2-y1)/(x2-x1) + d; then the line is to the right
+    #   -> Transform to y > x * (y2-y1)/(x2-x1) + y1 - x1 * (y2-y1)/(x2-x1)
+    #   -> Rewrite to: (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1)
+    #   -> Add 1e-15 in the denominator to avoid 0-division, and done!
 
-        df = df.dropna(subset=["origin", "destination"])
-        if not df.empty:
-            filtered_chunks.append(df)
+    x, y = lon, lat
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        y1, x1 = poly[i][0], poly[i][1]
+        y2, x2 = poly[(i+1) % n][0], poly[(i+1) % n][1]
+        if ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-15) + x1):
+            inside = not inside
+    return inside
+
+def filter_icao_by_regions(oa_df: pd.DataFrame, regions_cfg: list[dict]) -> set[str]:
+    if not regions_cfg:
+        return set(oa_df["icao"])
+    polys = [ _pairs_from_flat_polygon(r.get("polygon", [])) for r in regions_cfg ]
+    mask_any = np.zeros(len(oa_df), dtype=bool)
+    for poly in polys:
+        mask_any |= oa_df.apply(lambda r: _point_in_poly(float(r["lat"]), float(r["lon"]), poly), axis=1).to_numpy()
+    return set(oa_df.loc[mask_any, "icao"])
+
+
+def load_filtered(csv_path: Path,
+                  target_day: str | None,
+                  # date range (for averaging meta)
+                  date_start: str | None,
+                  date_end: str | None,
+                  chunksize: int) -> pd.DataFrame:
+    """
+    Load one or more CSVs and filter rows to (a) a single target day, or (b) an inclusive
+    date range. In both cases we only keep flights that start and land on the same UTC day.
+    """
+    if (date_start is None) ^ (date_end is None):
+        raise ValueError("Both --date-start and --date-end must be provided (or neither).")
+    use_range = (date_start is not None and date_end is not None)
+
+    # Collect CSV paths
+    csv_paths = []
+    if csv_path.is_dir():
+        csv_paths = sorted(csv_path.glob("*.csv"))
+    else:
+        csv_paths = [csv_path]
+    if not csv_paths:
+        return pd.DataFrame(columns=[c for c in USECOLS if c not in DROP_COLS])
+
+    filtered_chunks: list[pd.DataFrame] = []
+    for path in csv_paths:
+        for chunk in pd.read_csv(
+            path,
+            usecols=USECOLS,
+            dtype="string",
+            chunksize=chunksize,
+            low_memory=False,
+        ):
+            first_day = chunk["firstseen"].str.slice(0, 10)
+            last_day  = chunk["lastseen"].str.slice(0, 10)
+            same_day = (first_day == last_day)
+            if target_day is not None:
+                mask = same_day & (first_day == target_day)
+            else:
+                # range is inclusive on both ends
+                mask = same_day & (first_day >= date_start) & (first_day <= date_end)
+
+            if not mask.any():
+                continue
+
+            df = chunk.loc[mask].copy()
+            df.drop(columns=DROP_COLS, errors="ignore", inplace=True)
+
+            # Clean origin/destination
+            for c in ["origin", "destination"]:
+                df[c] = df[c].str.strip().str.upper()
+                df[c] = df[c].mask(df[c].isin(BAD_TOKENS))
+
+            df = df.dropna(subset=["origin", "destination"])
+            if not df.empty:
+                filtered_chunks.append(df)
 
     if filtered_chunks:
         return pd.concat(filtered_chunks, ignore_index=True)
@@ -150,6 +322,9 @@ def build_models(
     smoothing: bool,
     icao_only: bool,
     min_samples_per_od: int,
+    allowed_icao: set[str] | None,
+    date_start: str | None,
+    date_end: str | None,
     seed: int | None,
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]], np.ndarray, Dict[Tuple[str,str], np.ndarray], pd.Series]:
     rng = np.random.default_rng(seed)
@@ -167,13 +342,22 @@ def build_models(
     if icao_only:
         pat_icao = r"^[A-Z]{4}$"
         df = df[df["origin"].str.match(pat_icao) & df["destination"].str.match(pat_icao)]
+    # Optional ourairports whitelist filter (applies regardless of icao_only)
+    if allowed_icao is not None:
+        df = df[df["origin"].isin(allowed_icao) & df["destination"].isin(allowed_icao)]
+        # If everything vanished, keep empty df to flow through gracefully
+
+ 
+
 
     # Minute-of-day bins
     minute_of_day = (df["firstseen_dt"].dt.hour * 60 + df["firstseen_dt"].dt.minute).astype(int)
     n_bins = (24*60) // bin_min
     bin_idx = (minute_of_day // bin_min).clip(0, n_bins-1)
     df["_bin"] = bin_idx
-
+    df["_date"] = df["firstseen_dt"].dt.floor("D")
+    
+    """
     # Per-airport dep counts per bin
     dep_counts = (
         df.groupby(["origin","_bin"])
@@ -181,6 +365,32 @@ def build_models(
           .unstack(fill_value=0)
           .reindex(columns=range(n_bins), fill_value=0)
     )
+    """
+
+    # Per-airport dep counts per bin, averaged across days in the selection
+    # 1) count per (origin, date, bin)
+    daily = (
+        df.groupby(["origin", "_date", "_bin"])
+          .size()
+    )
+    daily_pivot = (
+        daily.unstack("_bin", fill_value=0)
+             .reindex(columns=range(n_bins), fill_value=0)
+    )
+    # 2) build full calendar day index for averaging (inclusive)
+    if date_start is not None and date_end is not None:
+        start = pd.to_datetime(date_start, utc=True).normalize()
+        end   = pd.to_datetime(date_end,   utc=True).normalize()
+        all_days = pd.date_range(start=start, end=end, freq="D", tz="UTC")
+    else:
+        # single-day mode: whatever is present
+        all_days = pd.Index(sorted(daily_pivot.index.get_level_values("_date").unique()))
+    # 3) ensure zeros for missing (origin, day) combinations
+    origins = pd.Index(sorted(df["origin"].unique()))
+    full_idx = pd.MultiIndex.from_product([origins, all_days], names=["origin","_date"])
+    daily_pivot = daily_pivot.reindex(full_idx, fill_value=0)
+    # 4) average over days
+    dep_counts = daily_pivot.groupby(level="origin").mean()
 
     if smoothing:
         # Optional Laplace noise (non-negative)
@@ -331,7 +541,58 @@ def main():
     if not args.csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {args.csv_path}")
 
-    df = load_filtered(args.csv_path, args.target_day, args.chunksize)
+    # Resolve ourairports verification
+    allowed_icao: set[str] | None = None
+    if args.verify_ourairports:
+        default_oa_path = Path("./ourairports/airports.csv")
+        is_default_path = (args.ourairports_path.resolve() == default_oa_path.resolve())
+        if args.ourairports_path.exists():
+            try:
+
+                oa_df = load_ourairports_df(args.ourairports_path)
+                # Optional geographic region restriction from config
+                regions_cfg = args.considered_geographic_regions or []
+                if regions_cfg:
+                    print("REGIONS CFG FOUND")
+                    print(regions_cfg)
+                    region_icao = filter_icao_by_regions(oa_df, regions_cfg)
+                    print(region_icao)
+                    quit()
+                    if not region_icao:
+                        print("[WARNING] - Geographic region filter matched 0 airports; ignoring region restriction.")
+                        allowed_icao = set(oa_df["icao"])
+                    else:
+                        allowed_icao = region_icao
+                else:
+                    allowed_icao = set(oa_df["icao"])
+
+            except Exception as e:
+                raise RuntimeError(f"Failed to load ourairports file at {args.ourairports_path}: {e}") from e
+        else:
+            if is_default_path:
+                print(f"[WARNING] - Could not verify airports from ourairports "
+                      f"(assumed to be located in {args.ourairports_path}). "
+                      f"Proceeding without external airport verification.")
+            else:
+                raise FileNotFoundError(f"OurAirports file not found: {args.ourairports_path}")
+
+
+    # Validate date selection
+    if args.date_start and args.date_end:
+        target_day = None
+    elif args.target_day:
+        target_day = args.target_day
+    else:
+        # default to legacy single-day if nothing provided
+        target_day = "2019-06-15"
+
+    df = load_filtered(
+        args.csv_path,
+        target_day=target_day,
+        date_start=args.date_start,
+        date_end=args.date_end,
+        chunksize=args.chunksize,
+    )
 
     airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq, dur_tertiles = build_models(
         df,
@@ -347,6 +608,9 @@ def main():
         smoothing=args.smoothing,
         icao_only=args.icao_only,
         min_samples_per_od=args.min_samples_per_od,
+        allowed_icao=allowed_icao,
+        date_start=args.date_start,
+        date_end=args.date_end,
         seed=args.seed,
     )
 
@@ -355,8 +619,14 @@ def main():
         exp_dir = args.out_dir
     else:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+
+        if args.date_start and args.date_end:
+            date_tag = f"range-{args.date_start}_to_{args.date_end}"
+        else:
+            date_tag = f"day-{target_day}"
+
         tag = (
-            f"day-{args.target_day}"
+            f"{date_tag}"
             f"_bin{args.bin_min}"
             f"_smooth{'T' if args.smoothing else 'F'}w{args.smooth_win}"
             f"_eps{args.epsilon:g}"
@@ -367,11 +637,17 @@ def main():
             f"_icao{'T' if args.icao_only else 'F'}"
             f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
         )
+
         exp_dir = args.out_dir / f"{ts}__{tag}"
     exp_dir.mkdir(parents=True, exist_ok=True)
     # persist full CLI args for traceability
     with open(exp_dir / "run_config.json", "w") as fh:
-        json.dump({k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}, fh, indent=2)
+        # dump a clean, JSON-serializable view (Paths as strings)
+        payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
+        # Include regions config explicitly (already in args but ensure JSON-friendly)
+        if "considered_geographic_regions" in payload and payload["considered_geographic_regions"] is not None:
+            payload["considered_geographic_regions"] = payload["considered_geographic_regions"]
+        json.dump(payload, fh, indent=2)
 
     save_artifacts(
         out_dir=exp_dir,
