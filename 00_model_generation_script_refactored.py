@@ -198,6 +198,7 @@ def load_ourairports_df(path: Path) -> pd.DataFrame:
     df = df.drop_duplicates(subset=["icao"])
     # Ensure only ICAOs that appear in the overall candidate set (guards weird files)
     df = df[df["icao"].isin(set(icao))]
+
     return df[["icao","lat","lon"]]
 
 def _pairs_from_flat_polygon(flat: list) -> list[tuple[float,float]]:
@@ -553,11 +554,7 @@ def main():
                 # Optional geographic region restriction from config
                 regions_cfg = args.considered_geographic_regions or []
                 if regions_cfg:
-                    print("REGIONS CFG FOUND")
-                    print(regions_cfg)
                     region_icao = filter_icao_by_regions(oa_df, regions_cfg)
-                    print(region_icao)
-                    quit()
                     if not region_icao:
                         print("[WARNING] - Geographic region filter matched 0 airports; ignoring region restriction.")
                         allowed_icao = set(oa_df["icao"])
