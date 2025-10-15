@@ -16,7 +16,7 @@ Region restriction:
   `considered_geographic_regions` polygons (lat,lon pairs, ray-cast point-in-poly).
 
 Outputs:
-  - vertices.csv with columns: IDENTIFIER,LAT,LON,ALTITUDE
+  - vertices.csv with columns: IDENTIFIER,LAT,LON,ALTITUDE,IS_AIRPORT
   - edges.csv    with columns: V0,V1,D    (0-based vertex ids, D in meters)
 
 Progress:
@@ -47,9 +47,11 @@ import os
 from pathlib import Path
 from time import time
 from typing import Dict, List, Tuple
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 # -------------------------
 # Helpers: progress
@@ -261,11 +263,14 @@ def build_vertices(
     """
     # Airports
     ap = load_ourairports_df(airports_csv, icao_only=icao_only)
+
     ap = ap.rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
     ap["ALTITUDE"] = 0.0
+    ap["IS_AIRPORT"] = 1
+
     # If OD provided: keep only airports that appear in origin or destination
-    if od_filter is not None and not od_filter.empty:
-        ap = ap[ap["IDENTIFIER"].isin(set(od_filter["origin"]).union(set(od_filter["destination"])))]
+    #if od_filter is not None and not od_filter.empty:
+    #    ap = ap[ap["IDENTIFIER"].isin(set(od_filter["origin"]).union(set(od_filter["destination"])))]
 
     # Navpoints
     fix_path = nav_dir / "fix.dat"
@@ -274,19 +279,20 @@ def build_vertices(
     if fix_path.exists():
         fdf = parse_fix(fix_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
         fdf["ALTITUDE"] = 0.0
+        fdf["IS_AIRPORT"] = 0
         nav_frames.append(fdf)
     if nav_path.exists():
         ndf = parse_nav(nav_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
         ndf["ALTITUDE"] = 0.0
+        ndf["IS_AIRPORT"] = 0
         nav_frames.append(ndf)
-    nav = pd.concat(nav_frames, ignore_index=True) if nav_frames else pd.DataFrame(columns=["IDENTIFIER","LAT","LON","ALTITUDE"])
+    nav_cols = ["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]
+    nav = pd.concat(nav_frames, ignore_index=True) if nav_frames else pd.DataFrame(columns=nav_cols)
 
-    # Concatenate + deduplicate (prefer airports on name collisions)
-    nav["is_airport"] = False
-    ap["is_airport"] = True
+    # Merge, preferring airport rows on IDENTIFIER collisions
     allv = pd.concat([ap, nav], ignore_index=True)
-    allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True)  # airports kept first
-    allv.drop(columns=["is_airport"], inplace=True)
+
+    allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True)  # airports first
 
     # Region filter
     if regions:
@@ -299,7 +305,7 @@ def build_vertices(
 
     # Reindex to have stable 0..N-1 ids
     allv.reset_index(drop=True, inplace=True)
-    return allv[["IDENTIFIER","LAT","LON","ALTITUDE"]]
+    return allv[["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]]
 
 
 def _neighbors_within_maxdist_balltree(latlon: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
@@ -496,7 +502,16 @@ def build_edges_rng_or_gabriel(
 # -------------------------
 def write_vertices_csv(df: pd.DataFrame, out_dir: Path):
     p = out_dir / "vertices.csv"
-    df.to_csv(p, index=False, columns=["IDENTIFIER","LAT","LON","ALTITUDE"])
+    # Write with IS_AIRPORT (0/1) so downstream knows which vertex ids are airports
+    cols = ["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]
+    for c in cols:
+        if c not in df.columns:
+            # Back-compat: if missing, synthesize non-airport flag
+            if c == "IS_AIRPORT":
+                df = df.assign(IS_AIRPORT=0)
+            else:
+                raise ValueError(f"vertices.csv missing required column: {c}")
+    df.to_csv(p, index=False, columns=cols)
 
 def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path):
     p = out_dir / "edges.csv"
@@ -507,6 +522,148 @@ def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path):
             if j < i:
                 i,j = j,i
             w.writerow([i, j, f"{d:.3f}"])
+
+# -------------------------
+# Connectivity enforcement
+# -------------------------
+def _graph_from_edges(n_nodes: int, edges: List[Tuple[int,int,float]]) -> nx.Graph:
+    G = nx.Graph()
+    G.add_nodes_from(range(n_nodes))
+    G.add_weighted_edges_from(edges, weight="D")
+    return G
+
+def _component_labels(G: nx.Graph) -> Tuple[np.ndarray, List[List[int]]]:
+    comps = [sorted(list(c)) for c in nx.connected_components(G)]
+    label = np.empty(G.number_of_nodes(), dtype=int)
+    for cid, nodes in enumerate(comps):
+        label[nodes] = cid
+    return label, comps
+
+def _centroids(latlon: np.ndarray, comps: List[List[int]]) -> np.ndarray:
+    # centroid in (lat,lon) deg; OK for smallish patches; for world we only use them
+    # to seed candidate pairs (final distances use haversine at point level).
+    C = np.zeros((len(comps), 2), dtype=float)
+    for i, idx in enumerate(comps):
+        pts = latlon[np.asarray(idx)]
+        C[i] = pts.mean(axis=0)
+    return C
+
+def _haversine_rad(u_rad: np.ndarray, v_rad: np.ndarray) -> np.ndarray:
+    # pairwise haversine distances between rows of u_rad and v_rad (radians), returns meters
+    # used only for small centroid kNN; for large sets we use BallTree below
+    EARTH_R_M = 6371008.8
+    uφ, uλ = u_rad[:,0:1], u_rad[:,1:2]
+    vφ, vλ = v_rad[None,:,0], v_rad[None,:,1]
+    dφ = vφ - uφ
+    dλ = vλ - uλ
+    a = np.sin(dφ/2.0)**2 + np.cos(uφ)*np.cos(vφ)*np.sin(dλ/2.0)**2
+    return 2.0 * EARTH_R_M * np.arcsin(np.sqrt(a))
+
+def _closest_pair_between_sets(idx_a: np.ndarray, idx_b: np.ndarray, latlon: np.ndarray) -> Tuple[int,int,float]:
+    """Return (ia, ib, d_m) for the closest pair across two components using BallTree."""
+    from sklearn.neighbors import BallTree
+    A = latlon[idx_a]
+    B = latlon[idx_b]
+    # query from smaller → larger
+    if len(A) <= len(B):
+        q_idx, q_pts = idx_a, A
+        t_idx, t_pts = idx_b, B
+        flip = False
+    else:
+        q_idx, q_pts = idx_b, B
+        t_idx, t_pts = idx_a, A
+        flip = True
+    tree = BallTree(np.deg2rad(t_pts), metric="haversine")
+    dist_rad, nn = tree.query(np.deg2rad(q_pts), k=1, return_distance=True)
+    k = int(dist_rad.argmin())
+    d_m = float(dist_rad[k,0] * 6371008.8)
+    q_node = int(q_idx[k])
+    t_node = int(t_idx[int(nn[k,0])])
+    if flip:
+        return t_node, q_node, d_m
+    return q_node, t_node, d_m
+
+def ensure_connected(latlon: np.ndarray,
+                     edges_kept: List[Tuple[int,int,float]],
+                     k_centroid_nn: int = 12,
+                     method: str = "mst") -> Tuple[List[Tuple[int,int,float]], int]:
+    """
+    If graph has >1 CC, add minimal set of bridging edges to connect all CCs.
+    Strategy (default 'mst'):
+      1) Compute components.
+      2) Build k-NN graph on component centroids (in haversine).
+      3) Compute MST over component centroids.
+      4) For each MST edge (comp u, comp v), add the *closest vertex pair*
+         across the two comps (via BallTree).
+    Returns: (augmented_edges, num_added)
+    """
+    N = latlon.shape[0]
+    G = _graph_from_edges(N, edges_kept)
+    _, comps = _component_labels(G)
+    if len(comps) <= 1:
+        return edges_kept, 0
+
+    print(f"[connectivity] Components before: {len(comps)}")
+    C = _centroids(latlon, comps)
+    C_rad = np.deg2rad(C)
+
+    # Build sparse kNN graph among centroids
+    try:
+        if method == "greedy":
+            raise Exception("Fallback to greedy")
+
+        from sklearn.neighbors import BallTree
+        tree = BallTree(C_rad, metric="haversine")
+        k = min(k_centroid_nn+1, len(comps))  # +1 because self is included
+        dist, nbrs = tree.query(C_rad, k=k, return_distance=True)
+        # Build edge list (avoid self, make undirected unique i<j)
+        comp_edges = set()
+        for i in range(len(comps)):
+            for kk in range(1, nbrs.shape[1]):
+                j = int(nbrs[i,kk])
+                if i == j: 
+                    continue
+                u, v = (i,j) if i<j else (j,i)
+                comp_edges.add((u,v))
+        # Assign centroid edge weights by great-circle meters
+        weights = []
+        for (u,v) in comp_edges:
+            d_m = _haversine_rad(C_rad[[u]], C_rad[[v]])[0,0]
+            weights.append((u,v,float(d_m)))
+        H = nx.Graph()
+        H.add_weighted_edges_from(weights, weight="w")
+        T = nx.minimum_spanning_tree(H, weight="w")
+        comp_pairs = list(T.edges())
+    except Exception:
+        # Fallback: greedy chain by nearest centroid (may be slower/different)
+        D = _haversine_rad(C_rad, C_rad)
+        np.fill_diagonal(D, np.inf)
+        parent = list(range(len(comps)))
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        comp_pairs = []
+        # Greedy: repeatedly link closest pair of current trees
+        while len({find(i) for i in range(len(comps))}) > 1:
+            u, v = np.unravel_index(np.argmin(D), D.shape)
+            if find(u) != find(v):
+                parent[find(u)] = find(v)
+                comp_pairs.append((u,v))
+            D[u,v] = D[v,u] = np.inf
+
+    # For each component pair, add the actual closest vertex pair
+    added = []
+    for (cu, cv) in comp_pairs:
+        ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlon)
+        added.append((int(ia), int(ib), float(dm)))
+
+    print(f"[connectivity] Adding {len(added)} bridging edge(s) to enforce a single connected graph.")
+    out_edges = list(edges_kept) + added
+    return out_edges, len(added)
+
+
 
 # -------------------------
 # CLI
@@ -532,6 +689,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--neighbor-index", type=str, default="balltree",
                    choices=["balltree","bruteforce"], help="Spatial index for neighbor search.")
     p.add_argument("--progress-interval", type=int, default=5, help="Seconds between ETA prints when tqdm is unavailable.")
+    p.add_argument("--enforce-connected", type=str, default="true",
+                   help="Ensure the final graph is a single connected component (default true).")
+    p.add_argument("--connectivity-method", type=str, default="mst", choices=["mst","greedy"],
+                   help="How to choose bridging component pairs (default mst).")
+    p.add_argument("--centroid-knn", type=int, default=12, help="k for centroid kNN (default 12).")
+    p.add_argument("--flat-out", action="store_true",
+                   help="Write files directly into --out-dir (disable auto-named subfolder).")
     return p.parse_args()
 
 # -------------------------
@@ -541,8 +705,27 @@ def main():
     args = parse_args()
     args.icao_only = True if str(args.icao_only).strip().lower() in ("true","t","1","yes","on") else False
 
-    out_dir = args.out_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Resolve connectivity flag early (used in tag)
+    do_connect = str(args.enforce_connected).strip().lower() in ("true","t","1","yes","on")
+
+    # --- build auto-named experiment directory ---
+    out_root = args.out_dir
+    out_root.mkdir(parents=True, exist_ok=True)
+    if args.flat_out:
+        exp_dir = out_root
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+        tag = (
+            f"crit-{args.criterion}"
+            f"_max{int(args.max_edge_km)}km"
+            f"_idx-{args.neighbor_index}"
+            f"_conn{'T' if do_connect else 'F'}knn{int(args.centroid_knn)}"
+            f"_icao{'T' if args.icao_only else 'F'}"
+            f"_nav-{args.navdir.name}_ap-{args.ourairports.name}"
+        )
+        exp_dir = out_root / f"{ts}__{tag}"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+ 
 
     # 1) Load config regions
     regions = load_regions_from_config(args.config) if args.config else []
@@ -573,9 +756,9 @@ def main():
     print(f"      Kept {N:,} vertices.")
 
     # 4) Save vertices.csv
-    write_vertices_csv(vertices, out_dir)
-    print(f"[4/6] Wrote vertices.csv")
-
+    write_vertices_csv(vertices, exp_dir)
+    print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
+ 
     # 5) Neighbor search (pre-candidate edges within max distance) with index
     print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
     latlon = vertices[["LAT","LON"]].to_numpy(dtype=float)
@@ -598,9 +781,44 @@ def main():
     )
     print(f"      Kept edges: {len(edges_kept):,}")
 
+    # 7) Enforce connectivity (optional, default on)
+    if do_connect:
+        print("[7/7] Enforcing connectivity...")
+        latlon = vertices[["LAT","LON"]].to_numpy(dtype=float)
+        edges_kept, n_added = ensure_connected(
+            latlon=latlon,
+            edges_kept=edges_kept,
+            k_centroid_nn=int(args.centroid_knn),
+            method=args.connectivity_method.lower(),
+        )
+        # quick report
+        G_final = _graph_from_edges(len(vertices), edges_kept)
+        k_final = nx.number_connected_components(G_final)
+        print(f"      Components after: {k_final} (added {n_added} bridging edge(s))")
+    else:
+        print("[7/7] Skipped connectivity enforcement by user request.")
+
+
     # Write edges.csv
-    write_edges_csv(edges_kept, out_dir)
-    print(f"Done. Wrote edges.csv and vertices.csv to {out_dir.resolve()}")
+    write_edges_csv(edges_kept, exp_dir)
+
+    # Persist a run_config.json for traceability (paths as strings)
+    try:
+        import json
+        payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
+        payload["resolved_out_dir"] = str(exp_dir.resolve())
+        payload["stats"] = {
+            "num_vertices": int(N),
+            "num_edges_written": int(len(edges_kept)),
+            "enforce_connected": bool(do_connect),
+        }
+        with open(exp_dir / "run_config.json", "w") as fh:
+            json.dump(payload, fh, indent=2)
+    except Exception:
+        pass
+
+    print(f"Done. Wrote edges.csv and vertices.csv to {exp_dir.resolve()}")
+ 
 
 if __name__ == "__main__":
     main()

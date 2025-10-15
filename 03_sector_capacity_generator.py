@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Atomic sector capacity generator
+Lightweight capacity & atomic sector assignment generator
 
 Reads vertices.csv (from your navpoint graph build) and assigns a capacity per
 vertex (interpreted as the dual "atomic sector"):
@@ -103,7 +103,14 @@ def main():
         "Capacity": capacities.astype(int)
     })
 
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write atomic navaid->sector assignment (each vertex maps to itself)
+    nsdf = pd.DataFrame({"Navaid_ID": vdf[id_col], "Sector_ID": vdf[id_col]})
+    nsdf_path = args.path  / "navaid_sector_assignment.csv"
+    nsdf.to_csv(nsdf_path, index=False)
+
+
     out_df.to_csv(out_path, index=False)
     print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()}")
 

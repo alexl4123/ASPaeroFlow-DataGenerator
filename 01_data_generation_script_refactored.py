@@ -372,6 +372,8 @@ def main():
         cfg["model_dir"] = str(args.model_dir)
         cfg["out"] = out_dir_str
         cfg["resolved_bin_min"] = bin_min
+        cfg["number_flights"] = flights_df.shape[0]
+        
         json.dump(cfg, fh, indent=2)
 
     flights_df.to_csv(out_flights, index=False)
