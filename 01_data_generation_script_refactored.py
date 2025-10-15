@@ -349,7 +349,7 @@ def main():
     # --- build auto-named experiment directory ---
     if args.flat_out:
         exp_dir = args.out_dir
-        out_flights = "flights.csv"
+        out_flights = exp_dir / "flights.csv"
     else:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
         tag = (
@@ -378,7 +378,7 @@ def main():
     aircrafts_path = exp_dir / "aircrafts.csv"
     aircrafts_df.to_csv(aircrafts_path, index=False)
 
-    print(f"Wrote {len(flights_df):,} flights to {out_flights.resolve()}")
+    print(f"Wrote {len(flights_df):,} flights to {str(out_flights)}")
     print(f"Wrote {len(aircrafts_df):,} aircraft rows to {aircrafts_path.resolve()}")
 
 if __name__ == "__main__":

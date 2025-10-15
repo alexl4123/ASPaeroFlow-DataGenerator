@@ -26,13 +26,14 @@ Output
 ------
 <data-dir>/filed_flights.csv with columns:
   Flight_ID,Position,Time
-where Position is the vertex id (int) from edges.csv / vertices row index.
+where Position is the vertex IDENTIFIER from vertices.csv (e.g., ICAO or fix/nav id).
+If IDENTIFIER is unavailable, we fall back to the numeric vertex index.
+ 
 
 Notes
 -----
-- vertices.csv is assumed to have rows aligned with vertex IDs (0..N-1).
-  If it also contains an explicit id column, it is ignored for trajectory IDs:
-  we use the numeric IDs that edges.csv uses.
+- vertices.csv rows are aligned with numeric vertex IDs (0..N-1), which edges.csv uses.
+- We map those numeric IDs back to IDENTIFIER strings for the output.
 - edges.csv can be (V0,V1,D) or (source,target,dist_m) or any case-variant.
 - aircrafts file may be named 'aircrafts.csv' or 'aircraft.csv'.
 - Progress bar uses tqdm if available; falls back to periodic prints.
@@ -78,7 +79,7 @@ def _normalize_edges_df(edf: pd.DataFrame) -> pd.DataFrame:
         edf = edf.rename(columns={cols[0]:"u", cols[1]:"v", cols[2]:"dist_m"})
     return edf[["u","v","dist_m"]]
 
-def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int]]:
+def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int], List[str] | None]:
     vpath = navgraph_dir / "vertices.csv"
     epath = navgraph_dir / "edges.csv"
     if not vpath.exists(): raise FileNotFoundError(f"vertices.csv not found: {vpath}")
@@ -87,13 +88,17 @@ def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int]]:
     vdf = pd.read_csv(vpath)
     # Build IDENTIFIER -> vertex_id map from rows (row index == vertex id)
     ident_to_vid: Dict[str,int] = {}
+    vid_to_ident: List[str] | None = None
     if "IDENTIFIER" in vdf.columns:
-        for i, s in enumerate(vdf["IDENTIFIER"].astype(str).str.strip().str.upper().tolist()):
-            ident_to_vid[s] = i
+        idents = vdf["IDENTIFIER"].astype(str).str.strip().str.upper().tolist()
+        ident_to_vid = {s: i for i, s in enumerate(idents)}
+        # Keep original strings (before upper) for nicer output? We’ll output upper to be consistent.
+        vid_to_ident = idents
     else:
         # If IDENTIFIER missing, we cannot map ICAOs; still load graph for debug use
         print("[WARN] vertices.csv has no IDENTIFIER column; OD mapping may fail.", file=sys.stderr)
-
+        vid_to_ident = None
+ 
     edf = pd.read_csv(epath)
     edf = _normalize_edges_df(edf)
     # enforce ints and floats
@@ -102,7 +107,7 @@ def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int]]:
     v = edf["v"].astype(int).to_numpy()
     d = edf["dist_m"].astype(float).to_numpy()
     G.add_weighted_edges_from(zip(u, v, d), weight="dist_m")
-    return G, ident_to_vid
+    return G, ident_to_vid, vid_to_ident
 
 def _load_flights(data_dir: Path) -> pd.DataFrame:
     fpath = data_dir / "flights.csv"
@@ -186,7 +191,7 @@ def generate_filed_plans(
     default_speed_kts: float = 450.0,
 ) -> pd.DataFrame:
     # Load inputs
-    G_base, ident_to_vid = _load_navgraph(navgraph_dir)
+    G_base, ident_to_vid, vid_to_ident = _load_navgraph(navgraph_dir)
     flights = _load_flights(data_dir)
     aircraft_speed = _load_aircrafts(data_dir)
 
@@ -221,7 +226,7 @@ def generate_filed_plans(
     speed_graphs = _build_speed_graph_cache(G_base, speed_values, time_granularity)
 
     # Iterate flights and produce (Flight_ID, Position, Time)
-    rows: List[Tuple[str,int,int]] = []
+    rows: List[Tuple[str,str,int]] = []
     use_bar = False
     try:
         from tqdm import tqdm as _tq
@@ -251,13 +256,18 @@ def generate_filed_plans(
         # Walk the path and accumulate times (exact same update rule as reference)
         t = start
         for hop, node in enumerate(path):
+            # Map numeric node -> IDENTIFIER (string) if available
+            if vid_to_ident is not None and 0 <= int(node) < len(vid_to_ident):
+                pos = str(vid_to_ident[int(node)]).strip().upper()
+            else:
+                pos = str(int(node))  # fallback: numeric id as string
             if hop == 0:
-                rows.append((fid, node, t))
+                rows.append((fid, pos, t))
             else:
                 prev = path[hop-1]
                 w = G_spd[prev][node]["weight"]
                 t = t + int(w)
-                rows.append((fid, node, t))
+                rows.append((fid, pos, t))
 
         if (not use_bar) and (time.time() - last_print > 5):
             print(f"  processed {len(rows)} trajectory points so far...")
@@ -267,6 +277,8 @@ def generate_filed_plans(
         print(f"[WARN] {missing_paths} flights had no path on the navgraph and were skipped.", file=sys.stderr)
 
     out = pd.DataFrame(rows, columns=["Flight_ID","Position","Time"])
+    out["Position"] = out["Position"].astype("string")
+
     return out
 
 
