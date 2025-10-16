@@ -126,10 +126,29 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     epath = nav_dir / "edges.csv"
     if not epath.exists():
         raise FileNotFoundError(f"Missing edges.csv in {nav_dir}")
+
     edf = pd.read_csv(epath)
     edf = _norm_edges_cols(edf)
-    edf["source"] = pd.to_numeric(edf["source"], errors="raise").astype(int)
-    edf["target"] = pd.to_numeric(edf["target"], errors="raise").astype(int)
+    # endpoints may be numeric vertex ids **or** IDENTIFIER strings
+    s_ints, s_isnum = _safe_int_series(edf["source"])
+    t_ints, t_isnum = _safe_int_series(edf["target"])
+    if s_isnum.all() and t_isnum.all():
+        edf["source"] = s_ints.astype(int)
+        edf["target"] = t_ints.astype(int)
+    else:
+        # map IDENTIFIER → vertex id using vertices.csv dictionary
+        s_ids = edf["source"].astype(str).str.strip().str.upper().map(ident_to_vid)
+        t_ids = edf["target"].astype(str).str.strip().str.upper().map(ident_to_vid)
+        # sanity check for unknown identifiers
+        if s_ids.isna().any() or t_ids.isna().any():
+            bad_s = edf.loc[s_ids.isna(), "source"].head(5).tolist()
+            bad_t = edf.loc[t_ids.isna(), "target"].head(5).tolist()
+            raise KeyError(
+                f"edges.csv contains IDENTIFIERs not found in vertices.csv. "
+                f"Examples source={bad_s} target={bad_t}"
+            )
+        edf["source"] = s_ids.astype(int)
+        edf["target"] = t_ids.astype(int)
     edf["dist_m"] = pd.to_numeric(edf["dist_m"], errors="coerce").astype(float)
 
     # sectors

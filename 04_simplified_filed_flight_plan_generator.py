@@ -79,7 +79,7 @@ def _normalize_edges_df(edf: pd.DataFrame) -> pd.DataFrame:
         edf = edf.rename(columns={cols[0]:"u", cols[1]:"v", cols[2]:"dist_m"})
     return edf[["u","v","dist_m"]]
 
-def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int], List[str] | None]:
+def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int], List[str] | None, bool]:
     vpath = navgraph_dir / "vertices.csv"
     epath = navgraph_dir / "edges.csv"
     if not vpath.exists(): raise FileNotFoundError(f"vertices.csv not found: {vpath}")
@@ -101,13 +101,25 @@ def _load_navgraph(navgraph_dir: Path) -> Tuple[nx.Graph, Dict[str,int], List[st
  
     edf = pd.read_csv(epath)
     edf = _normalize_edges_df(edf)
-    # enforce ints and floats
+
+    # Determine node type: numeric vertex ids vs IDENTIFIER strings
+    # Try numeric conversion; if any NaNs appear, treat as strings.
+    u_num = pd.to_numeric(edf["u"], errors="coerce")
+    v_num = pd.to_numeric(edf["v"], errors="coerce")
+    nodes_are_int = not (u_num.isna().any() or v_num.isna().any())
+
     G = nx.Graph()
-    u = edf["u"].astype(int).to_numpy()
-    v = edf["v"].astype(int).to_numpy()
-    d = edf["dist_m"].astype(float).to_numpy()
-    G.add_weighted_edges_from(zip(u, v, d), weight="dist_m")
-    return G, ident_to_vid, vid_to_ident
+    if nodes_are_int:
+        u = u_num.astype("int64").to_numpy()
+        v = v_num.astype("int64").to_numpy()
+        d = edf["dist_m"].astype(float).to_numpy()
+        G.add_weighted_edges_from(zip(u, v, d), weight="dist_m")
+    else:
+        u = edf["u"].astype(str).str.strip().str.upper().to_numpy()
+        v = edf["v"].astype(str).str.strip().str.upper().to_numpy()
+        d = edf["dist_m"].astype(float).to_numpy()
+        G.add_weighted_edges_from(zip(u, v, d), weight="dist_m")
+    return G, ident_to_vid, vid_to_ident, nodes_are_int
 
 def _load_flights(data_dir: Path) -> pd.DataFrame:
     fpath = data_dir / "flights.csv"
@@ -191,20 +203,33 @@ def generate_filed_plans(
     default_speed_kts: float = 450.0,
 ) -> pd.DataFrame:
     # Load inputs
-    G_base, ident_to_vid, vid_to_ident = _load_navgraph(navgraph_dir)
+    G_base, ident_to_vid, vid_to_ident, nodes_are_int = _load_navgraph(navgraph_dir)
+
     flights = _load_flights(data_dir)
     aircraft_speed = _load_aircrafts(data_dir)
 
     # Build mapping ICAO -> vertex id (airports)
     missing_airports = []
-    def _map_icao(code: str) -> int | None:
-        vid = ident_to_vid.get(code)
-        if vid is None:
-            missing_airports.append(code)
-        return vid
+    if nodes_are_int:
+        def _map_srcdst_numeric(code: str) -> int | None:
+            vid = ident_to_vid.get(code)
+            if vid is None:
+                missing_airports.append(code)
+            return vid
+        flights["src"] = flights["origin"].map(_map_srcdst_numeric)
+        flights["dst"] = flights["destination"].map(_map_srcdst_numeric)
+    else:
+        # Graph uses IDENTIFIER strings directly
+        g_nodes = set(G_base.nodes())
+        def _map_srcdst_string(code: str) -> str | None:
+            cc = str(code).strip().upper()
+            if cc not in g_nodes:
+                missing_airports.append(cc)
+                return None
+            return cc
+        flights["src"] = flights["origin"].map(_map_srcdst_string)
+        flights["dst"] = flights["destination"].map(_map_srcdst_string)
 
-    flights["src"] = flights["origin"].map(_map_icao)
-    flights["dst"] = flights["destination"].map(_map_icao)
     # Drop flights with unknown endpoints
     bad_endpoints = flights["src"].isna() | flights["dst"].isna()
     if bad_endpoints.any():
@@ -242,7 +267,13 @@ def generate_filed_plans(
         # namedtuple fields from flights dataframe
         # fields: flight_id, aircraft_id, origin, destination, departure_time, src, dst, start_slot, speed_kts
         fid = rec.flight_id
-        src = int(rec.src); dst = int(rec.dst)
+        src = rec.src
+        dst = rec.dst
+
+        # normalize types for lookup
+        if nodes_are_int:
+            src = int(src); dst = int(dst)
+
         spd = float(rec.speed_kts)
         start = int(rec.start_slot)
 
@@ -255,12 +286,17 @@ def generate_filed_plans(
 
         # Walk the path and accumulate times (exact same update rule as reference)
         t = start
+
         for hop, node in enumerate(path):
-            # Map numeric node -> IDENTIFIER (string) if available
-            if vid_to_ident is not None and 0 <= int(node) < len(vid_to_ident):
-                pos = str(vid_to_ident[int(node)]).strip().upper()
+            # Map node to IDENTIFIER string for output
+            if nodes_are_int:
+                if (vid_to_ident is not None) and (0 <= int(node) < len(vid_to_ident)):
+                    pos = str(vid_to_ident[int(node)]).strip().upper()
+                else:
+                    pos = str(int(node))
             else:
-                pos = str(int(node))  # fallback: numeric id as string
+                pos = str(node).strip().upper()
+
             if hop == 0:
                 rows.append((fid, pos, t))
             else:

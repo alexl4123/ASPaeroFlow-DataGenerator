@@ -17,7 +17,7 @@ Region restriction:
 
 Outputs:
   - vertices.csv with columns: IDENTIFIER,LAT,LON,ALTITUDE,IS_AIRPORT
-  - edges.csv    with columns: V0,V1,D    (0-based vertex ids, D in meters)
+  - edges.csv    with columns: V0,V1,D    (vertex IDENTIFIER pairs, D in meters)
 
 Progress:
   Shows a progress bar with ETA (via tqdm if available) or periodic percentage + ETA prints.
@@ -513,7 +513,7 @@ def write_vertices_csv(df: pd.DataFrame, out_dir: Path):
                 raise ValueError(f"vertices.csv missing required column: {c}")
     df.to_csv(p, index=False, columns=cols)
 
-def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path):
+def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path, idents: List[str]):
     p = out_dir / "edges.csv"
     with open(p, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -521,7 +521,7 @@ def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path):
         for i,j,d in edges:
             if j < i:
                 i,j = j,i
-            w.writerow([i, j, f"{d:.3f}"])
+            w.writerow([idents[i], idents[j], f"{d:.3f}"])
 
 # -------------------------
 # Connectivity enforcement
@@ -661,6 +661,8 @@ def ensure_connected(latlon: np.ndarray,
 
     print(f"[connectivity] Adding {len(added)} bridging edge(s) to enforce a single connected graph.")
     out_edges = list(edges_kept) + added
+
+
     return out_edges, len(added)
 
 
@@ -798,9 +800,8 @@ def main():
     else:
         print("[7/7] Skipped connectivity enforcement by user request.")
 
-
-    # Write edges.csv
-    write_edges_csv(edges_kept, exp_dir)
+    # Write edges.csv (using IDENTIFIER names instead of numeric indices)
+    write_edges_csv(edges_kept, exp_dir, vertices["IDENTIFIER"].astype(str).tolist())
 
     # Persist a run_config.json for traceability (paths as strings)
     try:
