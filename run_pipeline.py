@@ -201,6 +201,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--centroid-knn", type=int, default=int(C("centroid-knn", 12)))
     p.add_argument("--enforce-connected", type=str, default=C("enforce-connected", "true"),
                    help="true/false; ensure a single connected component (default true)")
+    p.add_argument("--altitude", type=float, default=C("altitude",0.0),
+                   help="Uniform altitude value for ALL vertices (default 0). Interpreted via --altitude-unit.")
+    p.add_argument("--altitude-unit", type=str, default=C("altitude-unit","m"), choices=["m","fl"],
+                   help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
 
     # Sectors (03)
     p.add_argument("--cap-enroute", type=int, default=int(C("cap-enroute", 60)))
@@ -305,6 +309,8 @@ def main():
             "--centroid-knn", str(a.centroid_knn),
             "--enforce-connected", "true" if a.enforce_connected else "false",
             "--out-dir", str(nav_dir),
+            "--altitude", str(a.altitude),
+            "--altitude-unit", str(a.altitude_unit),
             "--flat-out",
         ]
 

@@ -68,6 +68,40 @@ def _tqdm(seq, **kwargs):
 # -------------------------
 EARTH_R_M = 6371008.8  # mean Earth radius (meters)
 
+# Altitude helpers
+FT_PER_FL = 100.0
+M_PER_FT = 0.3048
+def to_altitude_m(alt_value: float, unit: str) -> float:
+    unit = (unit or "m").lower()
+    if unit == "fl":
+        return float(alt_value * FT_PER_FL * M_PER_FT)  # FL * 100 ft → meters
+    if unit == "m":
+        return float(alt_value)
+    raise ValueError("Invalid --altitude-unit: use 'm' or 'fl'")
+
+
+def chord_distance_3d_m(lat1, lon1, alt1, lat2, lon2, alt2) -> float:
+    """Straight-line distance through 3D space (meters) on a spherical Earth."""
+    φ1, λ1, φ2, λ2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
+    r1 = EARTH_R_M + float(alt1)
+    r2 = EARTH_R_M + float(alt2)
+    cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
+    d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
+    return float(np.sqrt(max(0.0, d2)))
+
+def chord_distance_3d_m_vec(latlonalt: np.ndarray, lat_deg: float, lon_deg: float, alt_m: float) -> np.ndarray:
+    """
+    Vectorized 3D chord distance from (lat,lon,alt) to many points (meters).
+    latlonalt: shape (N,3) with columns [LAT, LON, ALTITUDE]
+    """
+    φ1 = np.deg2rad(latlonalt[:,0]); λ1 = np.deg2rad(latlonalt[:,1])
+    r1 = EARTH_R_M + latlonalt[:,2].astype(float)
+    φ2 = np.deg2rad(lat_deg); λ2 = np.deg2rad(lon_deg)
+    r2 = EARTH_R_M + float(alt_m)
+    cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
+    d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
+    return np.sqrt(np.maximum(0.0, d2))
+
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
     """Great-circle distance (meters). All angles in degrees."""
     φ1, λ1, φ2, λ2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
@@ -257,7 +291,8 @@ def build_vertices(
     regions: List[List[Tuple[float,float]]],
     icao_only: bool = True,
     od_filter: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+    altitude_m: float = 0.0
+    ) -> pd.DataFrame:
     """
     Returns a DataFrame with columns: IDENTIFIER, LAT, LON, ALTITUDE (float, meters)
     """
@@ -265,7 +300,7 @@ def build_vertices(
     ap = load_ourairports_df(airports_csv, icao_only=icao_only)
 
     ap = ap.rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-    ap["ALTITUDE"] = 0.0
+    ap["ALTITUDE"] = float(altitude_m)
     ap["IS_AIRPORT"] = 1
 
     # If OD provided: keep only airports that appear in origin or destination
@@ -278,12 +313,12 @@ def build_vertices(
     nav_frames = []
     if fix_path.exists():
         fdf = parse_fix(fix_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-        fdf["ALTITUDE"] = 0.0
+        fdf["ALTITUDE"] = float(altitude_m)
         fdf["IS_AIRPORT"] = 0
         nav_frames.append(fdf)
     if nav_path.exists():
         ndf = parse_nav(nav_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-        ndf["ALTITUDE"] = 0.0
+        ndf["ALTITUDE"] = float(altitude_m)
         ndf["IS_AIRPORT"] = 0
         nav_frames.append(ndf)
     nav_cols = ["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]
@@ -308,7 +343,7 @@ def build_vertices(
     return allv[["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]]
 
 
-def _neighbors_within_maxdist_balltree(latlon: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
+def _neighbors_within_maxdist_balltree(latlonalt: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
     """
     Use scikit-learn BallTree with haversine metric (expects radians).
     Returns (nbr_idx, nbr_dst, pair_list) like the brute-force version.
@@ -319,8 +354,8 @@ def _neighbors_within_maxdist_balltree(latlon: np.ndarray, max_edge_m: float, pr
     except Exception as e:
         raise RuntimeError("BallTree requested but scikit-learn is not available. Install scikit-learn.") from e
 
-    N = latlon.shape[0]
-    rad = np.deg2rad(latlon)  # columns: [lat, lon] in radians
+    N = latlonalt.shape[0]
+    rad = np.deg2rad(latlonalt[:, :2])  # columns: [lat, lon] in radians
     tree = BallTree(rad, metric="haversine")
     radius_rad = max_edge_m / EARTH_R_M
 
@@ -341,15 +376,21 @@ def _neighbors_within_maxdist_balltree(latlon: np.ndarray, max_edge_m: float, pr
     for i in it:
         inds, dists = tree.query_radius(rad[i:i+1], r=radius_rad, return_distance=True, sort_results=True)
         ii = inds[0]
-        dd = (dists[0] * EARTH_R_M).astype(float)  # radians -> meters
-        # remove self (distance 0)
+        # 3D distances to candidates
+        dd3d_all = chord_distance_3d_m_vec(latlonalt, latlonalt[i,0], latlonalt[i,1], latlonalt[i,2])
+        # remove self and apply 3D cutoff
         mask = (ii != i)
-        ii = ii[mask]; dd = dd[mask]
+        ii = ii[mask]
+        dd3d = dd3d_all[ii].astype(float)
+        mask = (dd3d <= max_edge_m)
+        ii = ii[mask]; dd3d = dd3d[mask]
         nbr_idx[i] = ii
-        nbr_dst[i] = dd
+        nbr_dst[i] = dd3d
+
         # collect i<j
         js = ii[ii > i]
-        pair_list.extend((i, int(j), float(dd[np.where(ii == j)[0][0]])) for j in js)
+        # map each j to its 3D distance
+        pair_list.extend((i, int(j), float(dd3d[np.where(ii == j)[0][0]])) for j in js)
 
         if not use_tqdm:
             now = time()
@@ -373,7 +414,7 @@ def _choose_nside_for_radius(radius_rad: float) -> int:
     nside = max(1, min(32768, nside))
     return nside
 
-def _neighbors_within_maxdist(latlon: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
+def _neighbors_within_maxdist(latlonalt: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
     """
     For each point i, compute neighbors j!=i within max_edge_m, and distances.
     Returns:
@@ -381,7 +422,7 @@ def _neighbors_within_maxdist(latlon: np.ndarray, max_edge_m: float, progress_ms
       nbr_dst:  list of np.array(float) distances (meters) aligned with nbr_idx
       pair_list: list of (i,j,dij) for all i<j within max_edge_m (candidate edges)
     """
-    N = latlon.shape[0]
+    N = latlonalt.shape[0]
     nbr_idx: List[np.ndarray] = [None]*N
     nbr_dst: List[np.ndarray] = [None]*N
     pair_list: List[Tuple[int,int,float]] = []
@@ -397,7 +438,7 @@ def _neighbors_within_maxdist(latlon: np.ndarray, max_edge_m: float, progress_ms
         print(f"{progress_msg}...")
 
     for i in it:
-        d = haversine_m_vec(latlon, latlon[i,0], latlon[i,1])
+        d = chord_distance_3d_m_vec(latlonalt, latlonalt[i,0], latlonalt[i,1], latlonalt[i,2])
         d[i] = np.inf
         mask = (d <= max_edge_m)
         idxs = np.nonzero(mask)[0]
@@ -415,12 +456,12 @@ def _neighbors_within_maxdist(latlon: np.ndarray, max_edge_m: float, progress_ms
 
     return nbr_idx, nbr_dst, pair_list
 
-def _neighbors_within_maxdist_indexed(latlon: np.ndarray, max_edge_m: float, method: str, progress_msg: str):
+def _neighbors_within_maxdist_indexed(latlonalt: np.ndarray, max_edge_m: float, method: str, progress_msg: str):
     method = (method or "balltree").lower()
     if method == "balltree":
-        return _neighbors_within_maxdist_balltree(latlon, max_edge_m, progress_msg=progress_msg)
+        return _neighbors_within_maxdist_balltree(latlonalt, max_edge_m, progress_msg=progress_msg)
     elif method == "bruteforce":
-        return _neighbors_within_maxdist(latlon, max_edge_m, progress_msg=progress_msg)
+        return _neighbors_within_maxdist(latlonalt, max_edge_m, progress_msg=progress_msg)
     else:
         raise ValueError(f"Unknown neighbor index method: {method}")
  
@@ -551,19 +592,19 @@ def _centroids(latlon: np.ndarray, comps: List[List[int]]) -> np.ndarray:
 def _haversine_rad(u_rad: np.ndarray, v_rad: np.ndarray) -> np.ndarray:
     # pairwise haversine distances between rows of u_rad and v_rad (radians), returns meters
     # used only for small centroid kNN; for large sets we use BallTree below
-    EARTH_R_M = 6371008.8
-    uφ, uλ = u_rad[:,0:1], u_rad[:,1:2]
-    vφ, vλ = v_rad[None,:,0], v_rad[None,:,1]
-    dφ = vφ - uφ
-    dλ = vλ - uλ
-    a = np.sin(dφ/2.0)**2 + np.cos(uφ)*np.cos(vφ)*np.sin(dλ/2.0)**2
+    u_phi, u_lambda = u_rad[:,0:1], u_rad[:,1:2]
+    v_phi, v_lambda = v_rad[None,:,0], v_rad[None,:,1]
+    d_phi = v_phi - u_phi
+    d_lambda = v_lambda - u_lambda
+    a = np.sin(d_phi/2.0)**2 + np.cos(u_phi)*np.cos(v_phi)*np.sin(d_lambda/2.0)**2
     return 2.0 * EARTH_R_M * np.arcsin(np.sqrt(a))
 
-def _closest_pair_between_sets(idx_a: np.ndarray, idx_b: np.ndarray, latlon: np.ndarray) -> Tuple[int,int,float]:
+def _closest_pair_between_sets(idx_a: np.ndarray, idx_b: np.ndarray, latlonalt: np.ndarray) -> Tuple[int,int,float]:
     """Return (ia, ib, d_m) for the closest pair across two components using BallTree."""
     from sklearn.neighbors import BallTree
-    A = latlon[idx_a]
-    B = latlon[idx_b]
+
+    A = latlonalt[idx_a, :2]
+    B = latlonalt[idx_b, :2]
     # query from smaller → larger
     if len(A) <= len(B):
         q_idx, q_pts = idx_a, A
@@ -573,17 +614,21 @@ def _closest_pair_between_sets(idx_a: np.ndarray, idx_b: np.ndarray, latlon: np.
         q_idx, q_pts = idx_b, B
         t_idx, t_pts = idx_a, A
         flip = True
+
     tree = BallTree(np.deg2rad(t_pts), metric="haversine")
     dist_rad, nn = tree.query(np.deg2rad(q_pts), k=1, return_distance=True)
-    k = int(dist_rad.argmin())
-    d_m = float(dist_rad[k,0] * 6371008.8)
+
     q_node = int(q_idx[k])
     t_node = int(t_idx[int(nn[k,0])])
+    # Recompute as 3D distance using altitudes
+    qa = latlonalt[q_node]; ta = latlonalt[t_node]
+    d_m = chord_distance_3d_m(qa[0], qa[1], qa[2], ta[0], ta[1], ta[2])
+
     if flip:
         return t_node, q_node, d_m
     return q_node, t_node, d_m
 
-def ensure_connected(latlon: np.ndarray,
+def ensure_connected(latlonalt: np.ndarray,
                      edges_kept: List[Tuple[int,int,float]],
                      k_centroid_nn: int = 12,
                      method: str = "mst") -> Tuple[List[Tuple[int,int,float]], int]:
@@ -597,14 +642,14 @@ def ensure_connected(latlon: np.ndarray,
          across the two comps (via BallTree).
     Returns: (augmented_edges, num_added)
     """
-    N = latlon.shape[0]
+    N = latlonalt.shape[0]
     G = _graph_from_edges(N, edges_kept)
     _, comps = _component_labels(G)
     if len(comps) <= 1:
         return edges_kept, 0
 
     print(f"[connectivity] Components before: {len(comps)}")
-    C = _centroids(latlon, comps)
+    C = _centroids(latlonalt[:, :2], comps)
     C_rad = np.deg2rad(C)
 
     # Build sparse kNN graph among centroids
@@ -656,7 +701,7 @@ def ensure_connected(latlon: np.ndarray,
     # For each component pair, add the actual closest vertex pair
     added = []
     for (cu, cv) in comp_pairs:
-        ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlon)
+        ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlonalt)
         added.append((int(ia), int(ib), float(dm)))
 
     print(f"[connectivity] Adding {len(added)} bridging edge(s) to enforce a single connected graph.")
@@ -698,6 +743,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--centroid-knn", type=int, default=12, help="k for centroid kNN (default 12).")
     p.add_argument("--flat-out", action="store_true",
                    help="Write files directly into --out-dir (disable auto-named subfolder).")
+    # Altitude control (uniform for all vertices)
+    p.add_argument("--altitude", type=float, default=0.0,
+                   help="Uniform altitude value for ALL vertices (default 0). Interpreted via --altitude-unit.")
+    p.add_argument("--altitude-unit", type=str, default="m", choices=["m","fl"],
+                   help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
     return p.parse_args()
 
 # -------------------------
@@ -741,12 +791,15 @@ def main():
 
     # 3) Build vertices (airports + navpoints) with region filtering
     print(f"[3/6] Loading airports and navpoints...")
+    altitude_m = to_altitude_m(args.altitude, args.altitude_unit)
+    print(f"{altitude_m} = {args.altitude} --> {args.altitude_unit}")
     vertices = build_vertices(
         airports_csv=args.ourairports,
         nav_dir=args.navdir,
         regions=regions,
         icao_only=args.icao_only,
         od_filter=od_df if not od_df.empty else None,
+        altitude_m = altitude_m,
     )
     N = len(vertices)
     if N == 0:
@@ -759,18 +812,20 @@ def main():
  
     # 5) Neighbor search (pre-candidate edges within max distance) with index
     print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
-    latlon = vertices[["LAT","LON"]].to_numpy(dtype=float)
+    latlonalt = vertices[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
     nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
-        latlon, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
+        latlonalt, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
     )
+
 
     #nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist(latlon, max_edge_m=args.max_edge_km*1000.0, progress_msg="Neighbor search")
     print(f"      Candidate pairs: {len(pair_list):,}")
 
     # 6) Edge test (RNG / Gabriel)
     print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
+
     edges_kept = build_edges_rng_or_gabriel(
-        latlon=latlon,
+        latlon=latlonalt,
         nbr_idx=nbr_idx,
         nbr_dst=nbr_dst,
         pair_list=pair_list,
@@ -782,9 +837,8 @@ def main():
     # 7) Enforce connectivity (optional, default on)
     if do_connect:
         print("[7/7] Enforcing connectivity...")
-        latlon = vertices[["LAT","LON"]].to_numpy(dtype=float)
         edges_kept, n_added = ensure_connected(
-            latlon=latlon,
+            latlonalt=latlonalt,
             edges_kept=edges_kept,
             k_centroid_nn=int(args.centroid_knn),
             method=args.connectivity_method.lower(),
@@ -808,6 +862,7 @@ def main():
             "num_vertices": int(N),
             "num_edges_written": int(len(edges_kept)),
             "enforce_connected": bool(do_connect),
+            "altitude_m": float(altitude_m),
         }
         with open(exp_dir / "run_config.json", "w") as fh:
             json.dump(payload, fh, indent=2)
