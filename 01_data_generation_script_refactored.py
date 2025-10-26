@@ -174,17 +174,30 @@ def _pick_dest_time(
     b = (dep_time.hour * 60 + dep_time.minute) // bin_min
     b = int(max(0, min(b, (24 * 60) // bin_min - 1)))
     tb = od_time_model.get(origin, {})
-    if b in tb:
-        dests, probs = tb[b]
-        return str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
-    # Fallbacks: any other bin for this origin, else global
-    if tb:
-        dests, probs = next(iter(tb.values()))
-        return str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
-    if not global_dest_freq.empty:
-        return str(rng.choice(global_dest_freq.index.to_numpy(), p=global_dest_freq.values))
+    destination = None
+
+    iter_ = 0
+    while iter_ < 200:
+        if b in tb:
+            dests, probs = tb[b]
+            destination = str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
+        # Fallbacks: any other bin for this origin, else global
+        if tb:
+            dests, probs = next(iter(tb.values()))
+            destination = str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
+        if not global_dest_freq.empty:
+            destination =  str(rng.choice(global_dest_freq.index.to_numpy(), p=global_dest_freq.values))
+
+        if destination != origin:
+            break
+        else:
+            iter_ += 1
+
+    if destination == origin:
+        print(f"[WARN]: DEST=ORIGIN for {origin}")
+
     # Hard fallback if everything is empty
-    return "XXXX"
+    return destination
 
 """
 def _pick_duration_od(
@@ -376,7 +389,18 @@ def main():
         
         json.dump(cfg, fh, indent=2)
 
-    flights_df.to_csv(out_flights, index=False)
+    # before saving flights.csv
+    s = flights_df["departure_time"].astype(str).str.strip()
+    # clean any legacy ".Z" artifacts just in case
+    s = s.str.replace(r"\.Z$", "Z", regex=True)
+
+    flights_df["departure_time"] = pd.to_datetime(
+        s, format="ISO8601", utc=True, errors="raise"
+    )
+
+    # choose how you want to serialize (seconds precision here)
+    flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%SZ")
+
     aircrafts_path = exp_dir / "aircrafts.csv"
     aircrafts_df.to_csv(aircrafts_path, index=False)
 

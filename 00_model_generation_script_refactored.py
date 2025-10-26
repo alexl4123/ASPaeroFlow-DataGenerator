@@ -347,9 +347,7 @@ def build_models(
     if allowed_icao is not None:
         df = df[df["origin"].isin(allowed_icao) & df["destination"].isin(allowed_icao)]
         # If everything vanished, keep empty df to flow through gracefully
-
- 
-
+    
 
     # Minute-of-day bins
     minute_of_day = (df["firstseen_dt"].dt.hour * 60 + df["firstseen_dt"].dt.minute).astype(int)
@@ -572,8 +570,6 @@ def main():
                       f"Proceeding without external airport verification.")
             else:
                 raise FileNotFoundError(f"OurAirports file not found: {args.ourairports_path}")
-
-
     # Validate date selection
     if args.date_start and args.date_end:
         target_day = None

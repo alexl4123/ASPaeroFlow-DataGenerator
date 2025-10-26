@@ -738,10 +738,6 @@ def main():
     od_df = load_od_pairs(args.od_file)
     if not od_df.empty:
         print(f"[2/6] Loaded OD pairs: {len(od_df):,} rows (restricting airports to observed ICAOs).")
-    ac_df = load_aircrafts(args.aircrafts_file)
-    if not ac_df.empty:
-        nspd = ac_df["speed_kts"].notna().sum() if "speed_kts" in ac_df.columns else 0
-        print(f"[2/6] Loaded aircrafts: {len(ac_df):,} rows ({nspd:,} with speed_kts).")
 
     # 3) Build vertices (airports + navpoints) with region filtering
     print(f"[3/6] Loading airports and navpoints...")

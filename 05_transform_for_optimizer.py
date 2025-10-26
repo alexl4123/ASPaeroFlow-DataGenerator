@@ -150,6 +150,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         edf["source"] = s_ids.astype(int)
         edf["target"] = t_ids.astype(int)
     edf["dist_m"] = pd.to_numeric(edf["dist_m"], errors="coerce").astype(float)
+    edf["dist_m"] = edf["dist_m"].round(decimals=0).astype(int)
 
     # sectors
     spath = nav_dir / "sectors.csv"

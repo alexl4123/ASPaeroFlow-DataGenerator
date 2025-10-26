@@ -28,13 +28,32 @@ import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Iterable, List, Tuple
+import os, shlex, subprocess
+import sys
 
 # -------------------------
 # utils
 # -------------------------
+
 def run(cmd, cwd: Path | None = None):
-    print(f"[RUN] {' '.join(str(x) for x in cmd)}")
-    subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
+    print(f"[RUN] {shlex.join(map(str, cmd))}")
+    sys.stdout.flush()
+
+    try:
+        cp = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,   # <- capture stdout+stderr
+            text=True,             # <- decode to str
+            check=True,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+
+        return cp
+    except subprocess.CalledProcessError as e:
+        print("\n--- subprocess stdout ---\n", (e.stdout or "<empty>"), sep="")
+        print("\n--- subprocess stderr ---\n", (e.stderr or "<empty>"), sep="")
+        raise
 
 def file_exists(path: Path) -> bool:
     try:
@@ -239,6 +258,8 @@ def main():
     nav_dir   = exp_dir / "navgraph"
 
     # 1) MODEL (00) — skip if artifacts exist and not forced
+
+    print(f"[1/6] Generating Model")
     model_needed = a.force_rebuild_model or not all([
         file_exists(model_dir / "airport_bins.csv"),
         file_exists(model_dir / "od_time_model.csv"),
@@ -266,31 +287,9 @@ def main():
         run(cmd)
     else:
         print("[SKIP] Model artifacts present → step 1 skipped.")
-
-    # 2) DATA (01)
-    # 2.A) DATA (01)
-    # Build full (scale,seed) grid
-    ds_pairs = _pair_grid(a.scales, a.seeds)
-    if not ds_pairs:
-        ds_pairs = [(a.scale, a.seed)]
-    first_scale, first_seed = ds_pairs[0]
-    first_ds_dir = exp_dir / _ds_name(first_scale, first_seed)
-    first_ds_dir.mkdir(parents=True, exist_ok=True)
-
-    # 2.B) First DATA sample (01) to allow OD restriction for navgraph (if requested)
-    print(f"[2/6] Generating first dataset for navgraph OD reference: scale={first_scale:g}, seed={first_seed}")
-    run([
-        "python", "01_data_generation_script_refactored.py",
-        "--model-dir", str(model_dir),
-        "--day", sim_day,
-        "--scale", str(first_scale),
-        "--seed", str(first_seed),
-        "--out-dir", str(first_ds_dir),
-        "--flat-out",
-    ])
-
-
-    # 3) NAVGRAPH (02) — skip if vertices & edges exist and not forced
+   
+    # 2) NAVGRAPH (02) — skip if vertices & edges exist and not forced
+    print(f"[2/6] Generating Navgraph")
     graph_needed = a.force_rebuild_graph or not all([
         file_exists(nav_dir / "vertices.csv"),
         file_exists(nav_dir / "edges.csv"),
@@ -311,34 +310,86 @@ def main():
 
         if a.config:
             cmd += ["--config", str(a.config)]
-        if not a.skip_nav_od_filter:
-            od_file = first_ds_dir / "flights.csv"
-            if file_exists(od_file):
-                cmd += ["--od-file", str(od_file)]
+
+        #if not a.skip_nav_od_filter:
+        #    od_file = first_ds_dir / "flights.csv"
+        #    if file_exists(od_file):
+        #        cmd += ["--od-file", str(od_file)]
 
         run(cmd)
     else:
         print("[SKIP] Navgraph present → step 3 skipped.")
+ 
+    # 3) SECTOR CAPACITIES (03)
+    print(f"[3/6] Sector Capacities")
 
-    # 4) SECTOR CAPACITIES (03)
-    # NOTE: Corrected call — script expects '--path', not '--vertices-dir'
-    run([
-        "python", "03_sector_capacity_generator.py",
-        "--path", str(nav_dir),
-        "--cap-enroute", str(a.cap_enroute),
-        "--cap-airport", str(a.cap_airport),
+    graph_needed = a.force_rebuild_graph or not all([
+        file_exists(nav_dir / "navaid_sector_assignment.csv"),
+        file_exists(nav_dir / "sectors.csv"),
+    ])
+    if graph_needed:
+        run([
+            "python", "03_sector_capacity_generator.py",
+            "--path", str(nav_dir),
+            "--cap-enroute", str(a.cap_enroute),
+            "--cap-airport", str(a.cap_airport),
+        ])
+    else:
+        print(f"[SKIP] Sector capacities")
+
+    # 2) DATA (01)
+    # 2.A) DATA (01)
+    # Build full (scale,seed) grid
+    ds_pairs = _pair_grid(a.scales, a.seeds)
+    if not ds_pairs:
+        ds_pairs = [(a.scale, a.seed)]
+    first_scale, first_seed = ds_pairs[0]
+    first_ds_dir = exp_dir / _ds_name(first_scale, first_seed)
+    first_ds_dir.mkdir(parents=True, exist_ok=True)
+
+    # 2.B) First DATA sample (01) to allow OD restriction for navgraph (if requested)
+    print(f"[4/6] Generating first dataset")
+
+    data_needed = not all([
+        file_exists(first_ds_dir / "flights.csv"),
+        file_exists(first_ds_dir / "aircrafts.csv"),
     ])
 
+    if data_needed:
+        run([
+            "python", "01_data_generation_script_refactored.py",
+            "--model-dir", str(model_dir),
+            "--day", sim_day,
+            "--scale", str(first_scale),
+            "--seed", str(first_seed),
+            "--out-dir", str(first_ds_dir),
+            "--flat-out",
+        ])
+    else:
+        print("[SKIP] Generating first dataset")
+
+
+
+
     # 5) DATASETS + FILED PLANS for all (scale,seed) pairs
+    print(f"[5/6] Generating datasets")
     datasets = []
     for idx, (scale, seed) in enumerate(ds_pairs):
         ds_dir = exp_dir / _ds_name(scale, seed)
         if not ds_dir.exists():
             ds_dir.mkdir(parents=True, exist_ok=True)
         # Regenerate data if missing (idempotent)
-        flights_csv = ds_dir / "flights.csv"
-        if not file_exists(flights_csv):
-            print(f"[5/{idx+1}] Generating data: scale={scale:g}, seed={seed}")
+        #flights_csv = ds_dir / "flights.csv"
+
+        data_needed = not all([
+            file_exists(ds_dir / "flights.csv"),
+            file_exists(ds_dir / "aircrafts.csv"),
+        ])
+
+
+
+        print(f"[5/{idx+1}/Data] Generating data: scale={scale:g}, seed={seed}")
+        if data_needed:
             run([
                 "python", "01_data_generation_script_refactored.py",
                 "--model-dir", str(model_dir),
@@ -351,18 +402,27 @@ def main():
         else:
             print(f"[SKIP] Data present for {ds_dir.name}")
 
-        # Filed flight plans (always ensure present)
-        print(f"[5/{idx+1}] Generating filed plans for {ds_dir.name}")
-        run([
-            "python", "04_simplified_filed_flight_plan_generator.py",
-            "--data-dir", str(ds_dir),
-            "--navgraph-dir", str(nav_dir),
-            "--time-granularity", str(a.time_granularity),
+        trajectory_needed = not all([
+            file_exists(ds_dir / "filed_flights.csv"),
         ])
+
+        print(f"[5/{idx+1}/Trajectory] Generating filed plans for {ds_dir.name}")
+        if trajectory_needed:
+            # Filed flight plans (always ensure present)
+            run([
+                "python", "04_simplified_filed_flight_plan_generator.py",
+                "--data-dir", str(ds_dir),
+                "--navgraph-dir", str(nav_dir),
+                "--time-granularity", str(a.time_granularity),
+            ])
+        else:
+            print("[SKIP] Trajectory Generation")
+
         datasets.append(str(ds_dir.resolve()))
 
 
     # 6) manifest
+    print(f"[6/6] Writing manifest")
     manifest = {
         "experiment_dir": str(exp_dir.resolve()),
         "experiment_name": a.experiment_name,

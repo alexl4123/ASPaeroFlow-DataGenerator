@@ -132,6 +132,43 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     missing = [n for n in need if n not in cmap]
     if missing:
         raise ValueError(f"flights.csv must contain columns {need}. Missing: {missing}")
+
+
+    fdf["_lineno"] = np.arange(len(fdf), dtype=int) + 2
+
+    # Clean strings
+    for c in ("origin","destination","departure_time"):
+        fdf[c] = fdf[c].astype(str).str.strip()
+
+    # Flag obviously non-timestamp junk (helps debugging)
+    junk_hint = fdf["departure_time"].str.contains(r"\[RUN\]|Traceback|^raise\b|python ", na=False)
+
+    parsed_ts = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce")
+    bad = parsed_ts.isna()
+
+    if bad.any():
+        bad_rows = fdf.loc[bad, ["_lineno", "flight_id", "departure_time"]]
+
+        print("\n[flights.csv] Invalid departure_time at file lines:")
+        for _, r in bad_rows.iterrows():
+            print(f"  line {int(r['_lineno'])}: flight_id={r['flight_id']!s} departure_time={r['departure_time']!r}")
+
+        # Also print the raw lines from the file for certainty (what Vim shows is real)
+        bad_line_nums = set(int(x) for x in bad_rows["_lineno"].tolist())
+        print("\n[flights.csv] Raw file lines with issues:")
+        with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh, start=1):
+                if i in bad_line_nums:
+                    print(f"{i:>7}: {line.rstrip()}")
+
+        # Optional: hint if junk-y patterns were seen
+        if junk_hint.any():
+            junk_lines = fdf.loc[junk_hint, "_lineno"].tolist()
+            print(f"\n[hint] Some lines look like logs mixed into CSV. Example line(s): {junk_lines[:5]}")
+
+        raise ValueError("Invalid timestamps in departure_time; see lines above.")
+
+
     fdf = fdf.rename(columns={cmap[n]: n for n in need})
     fdf["origin"] = fdf["origin"].astype(str).str.strip().str.upper()
     fdf["destination"] = fdf["destination"].astype(str).str.strip().str.upper()
