@@ -195,7 +195,13 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     navaid_ints, navaid_isnum = _safe_int_series(nsdf["Navaid_ID"])
     if navaid_isnum.all():
         nsdf["Navaid_ID"] = navaid_ints.astype(int)
+
+        for row_index in range(nsdf.shape[1]):
+            print(row_index)
+
+        quit()
     else:
+        print("[WARN] - NOT ISNUM ALL")
         nsdf["Navaid_ID"] = nsdf["Navaid_ID"].astype(str).str.strip().str.upper().map(ident_to_vid)
         if nsdf["Navaid_ID"].isna().any():
             bad = nsdf.loc[nsdf["Navaid_ID"].isna(), "Navaid_ID"].head(5).tolist()
