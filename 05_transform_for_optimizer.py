@@ -180,6 +180,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     nsdf = pd.read_csv(ns_path)
     if not {"Navaid_ID","Sector_ID"} <= set(nsdf.columns):
         raise ValueError("navaid_sector_assignment.csv must have columns Navaid_ID,Sector_ID")
+    """
     # map both columns to ints
     for col in ("Navaid_ID","Sector_ID"):
         ints, isnum = _safe_int_series(nsdf[col])
@@ -188,6 +189,22 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         else:
             nsdf[col] = nsdf[col].astype(str).str.strip().str.upper().map(ident_to_vid)
     nsdf = nsdf[["Navaid_ID","Sector_ID"]].sort_values(["Navaid_ID","Sector_ID"])
+    """
+
+    # Map ONLY Navaid_ID → vertex id; keep Sector_ID as opaque label (e.g., SECTOR_000024, SECTOR_AIRPORT_LOAL)
+    navaid_ints, navaid_isnum = _safe_int_series(nsdf["Navaid_ID"])
+    if navaid_isnum.all():
+        nsdf["Navaid_ID"] = navaid_ints.astype(int)
+    else:
+        nsdf["Navaid_ID"] = nsdf["Navaid_ID"].astype(str).str.strip().str.upper().map(ident_to_vid)
+        if nsdf["Navaid_ID"].isna().any():
+            bad = nsdf.loc[nsdf["Navaid_ID"].isna(), "Navaid_ID"].head(5).tolist()
+            raise KeyError(f"navaid_sector_assignment.csv has unknown Navaid_IDs not in vertices.csv. Examples: {bad}")
+    # Sector_ID remains string; just normalize whitespace (do NOT upper in case labels are caseful)
+    nsdf["Sector_ID"] = nsdf["Sector_ID"].astype(str).str.strip()
+    if (nsdf["Sector_ID"] == "").any():
+        raise ValueError("navaid_sector_assignment.csv contains empty Sector_ID values.")
+    nsdf = nsdf[["Navaid_ID","Sector_ID"]].sort_values(["Navaid_ID","Sector_ID"], kind="mergesort")
 
     # airports list
     ap_path = nav_dir / "airports.csv"

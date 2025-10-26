@@ -98,6 +98,7 @@ def _partition_connected(enroute_ids: list, adj: dict, order: dict, n: int) -> l
     def neighbors_sorted(x):
         # deterministic by original order
         return sorted((y for y in adj.get(x, []) if y in unassigned), key=lambda z: order.get(z, 10**12))
+
     for seed in enroute_ids:
         if seed not in unassigned:
             continue
