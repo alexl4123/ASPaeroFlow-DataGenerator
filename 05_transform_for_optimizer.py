@@ -192,25 +192,61 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     """
 
     # Map ONLY Navaid_ID → vertex id; keep Sector_ID as opaque label (e.g., SECTOR_000024, SECTOR_AIRPORT_LOAL)
+
+    """ 
     navaid_ints, navaid_isnum = _safe_int_series(nsdf["Navaid_ID"])
-    if navaid_isnum.all():
-        nsdf["Navaid_ID"] = navaid_ints.astype(int)
 
-        for row_index in range(nsdf.shape[1]):
-            print(row_index)
+    nsdf["Navaid_ID"] = nsdf["Navaid_ID"].astype(str).str.strip().str.upper().map(ident_to_vid)
 
-        quit()
-    else:
-        print("[WARN] - NOT ISNUM ALL")
-        nsdf["Navaid_ID"] = nsdf["Navaid_ID"].astype(str).str.strip().str.upper().map(ident_to_vid)
-        if nsdf["Navaid_ID"].isna().any():
-            bad = nsdf.loc[nsdf["Navaid_ID"].isna(), "Navaid_ID"].head(5).tolist()
-            raise KeyError(f"navaid_sector_assignment.csv has unknown Navaid_IDs not in vertices.csv. Examples: {bad}")
-    # Sector_ID remains string; just normalize whitespace (do NOT upper in case labels are caseful)
-    nsdf["Sector_ID"] = nsdf["Sector_ID"].astype(str).str.strip()
+    for row_index in range(nsdf.shape[0]):
+
+        navaid_index = nsdf.iat[row_index,0]
+        sector_index = nsdf.iat[row_index,1]
+        
+        try:
+            int(sector_index)            # if this works, skip
+            continue
+        except Exception:
+            # boolean mask over ROWS where column 1 equals the current sector_index
+            mask = nsdf.iloc[:, 1].eq(sector_index)
+            nsdf.iloc[mask, 1] = navaid_index
+
     if (nsdf["Sector_ID"] == "").any():
         raise ValueError("navaid_sector_assignment.csv contains empty Sector_ID values.")
     nsdf = nsdf[["Navaid_ID","Sector_ID"]].sort_values(["Navaid_ID","Sector_ID"], kind="mergesort")
+    """
+
+
+
+    colN, colS = "Navaid_ID", "Sector_ID"
+
+    # 1) Normalize/map Navaid_IDs (same as you had)
+    nsdf[colN] = (nsdf[colN].astype(str)
+                            .str.strip()
+                            .str.upper()
+                            .map(ident_to_vid))
+
+    # 2) Identify which Sector_ID entries are numeric
+    is_numeric_sector = pd.to_numeric(nsdf[colS], errors="coerce").notna()
+
+    # 3) Build the label -> navaid mapping from NON-numeric Sector_ID rows
+    #    keep='last' matches the loop's "last write wins" behavior
+    label_to_navaid = (nsdf.loc[~is_numeric_sector, [colS, colN]]
+                         .dropna(subset=[colS])
+                         .drop_duplicates(subset=[colS], keep='first')
+                         .set_index(colS)[colN])
+
+    # 4) Replace all label occurrences in one shot
+    nsdf[colS] = nsdf[colS].replace(label_to_navaid)
+
+    # (Optional) If you expect Sector_ID to be integer-typed at the end:
+    # nsdf[colS] = pd.to_numeric(nsdf[colS], errors="raise")  # or .astype('Int64')
+
+    # 5) Your original validation + sort
+    if (nsdf[colS] == "").any():
+        raise ValueError("navaid_sector_assignment.csv contains empty Sector_ID values.")
+
+    nsdf = nsdf[[colN, colS]].sort_values([colN, colS], kind="mergesort")
 
     # airports list
     ap_path = nav_dir / "airports.csv"
