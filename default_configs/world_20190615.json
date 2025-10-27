@@ -1,7 +1,12 @@
 {
+    "experiment-name":"WORLD-2019-06-15",
     "target-day":"2019-06-15",
     "bin-min":"15",
     "smoothing":"False",
     "verify-ourairports":"True",
-    "seed":"11904657"
+    "seed":"11904657",
+    "time-granularity":"60",
+    "flight-scales":[0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.5,1,1.5],
+    "flight-seeds":[42,11904657]
 }
+
