@@ -358,6 +358,10 @@ def main():
         seed=args.seed,
     )
 
+    if flights_df.shape[0] <= 1:
+        print(f"[WARN] - NOT ENOUGH FLIGHTS RECORDED: {flights_df.shape[0]}")
+        quit(0)
+
     args.out_dir.mkdir(parents=True, exist_ok=True)
     # --- build auto-named experiment directory ---
     if args.flat_out:

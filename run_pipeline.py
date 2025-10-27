@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Iterable, List, Tuple
 import os, shlex, subprocess
 import sys
+import shutil
 
 # -------------------------
 # utils
@@ -408,23 +409,33 @@ def main():
         else:
             print(f"[SKIP] Data present for {ds_dir.name}")
 
-        trajectory_needed = not all([
-            file_exists(ds_dir / "filed_flights.csv"),
+        data_exists = all([
+            file_exists(ds_dir / "flights.csv"),
+            file_exists(ds_dir / "aircrafts.csv"),
         ])
 
-        print(f"[5/{idx+1}/Trajectory] Generating filed plans for {ds_dir.name}")
-        if trajectory_needed:
-            # Filed flight plans (always ensure present)
-            run([
-                "python", "04_simplified_filed_flight_plan_generator.py",
-                "--data-dir", str(ds_dir),
-                "--navgraph-dir", str(nav_dir),
-                "--time-granularity", str(a.time_granularity),
+        if data_exists is True:
+            trajectory_needed = not all([
+                file_exists(ds_dir / "filed_flights.csv"),
             ])
-        else:
-            print("[SKIP] Trajectory Generation")
 
-        datasets.append(str(ds_dir.resolve()))
+            print(f"[5/{idx+1}/Trajectory] Generating filed plans for {ds_dir.name}")
+            if trajectory_needed:
+                # Filed flight plans (always ensure present)
+                run([
+                    "python", "04_simplified_filed_flight_plan_generator.py",
+                    "--data-dir", str(ds_dir),
+                    "--navgraph-dir", str(nav_dir),
+                    "--time-granularity", str(a.time_granularity),
+                ])
+            else:
+                print("[SKIP] Trajectory Generation")
+
+            datasets.append(str(ds_dir.resolve()))
+        else:
+            # OTHERWISE WE DO NOT NEED IT
+            print(f"[WARN] - Removing {ds_dir} as no data was produced for it.")
+            shutil.rmtree(ds_dir)
 
 
     # 6) manifest
