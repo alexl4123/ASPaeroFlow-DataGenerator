@@ -618,6 +618,7 @@ def _closest_pair_between_sets(idx_a: np.ndarray, idx_b: np.ndarray, latlonalt: 
     tree = BallTree(np.deg2rad(t_pts), metric="haversine")
     dist_rad, nn = tree.query(np.deg2rad(q_pts), k=1, return_distance=True)
 
+    k = int(dist_rad.argmin())
     q_node = int(q_idx[k])
     t_node = int(t_idx[int(nn[k,0])])
     # Recompute as 3D distance using altitudes
