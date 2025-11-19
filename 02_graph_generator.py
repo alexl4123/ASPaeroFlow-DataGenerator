@@ -81,26 +81,54 @@ def to_altitude_m(alt_value: float, unit: str) -> float:
 
 
 def chord_distance_3d_m(lat1, lon1, alt1, lat2, lon2, alt2) -> float:
-    """Straight-line distance through 3D space (meters) on a spherical Earth."""
+    """Straight-line distance through 3D space (meters) on a spherical Earth.""" 
+    #φ1, λ1, φ2, λ2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
+    #r1 = EARTH_R_M + float(alt1)
+    #r2 = EARTH_R_M + float(alt2)
+    #cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
+    #d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
+    #return float(np.sqrt(max(0.0, d2)))
+
+    """Great-circle arc at effective radius (avg altitude), combined with vertical Δh (meters)."""
     φ1, λ1, φ2, λ2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
-    r1 = EARTH_R_M + float(alt1)
-    r2 = EARTH_R_M + float(alt2)
-    cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
-    d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
-    return float(np.sqrt(max(0.0, d2)))
+    dφ = φ2 - φ1
+    dλ = λ2 - λ1
+    a = np.sin(dφ/2.0)**2 + np.cos(φ1)*np.cos(φ2)*np.sin(dλ/2.0)**2
+    a = float(np.clip(a, 0.0, 1.0))
+    γ = 2.0 * np.arcsin(np.sqrt(a))  # central angle (rad)
+    r_eff = EARTH_R_M + 0.5*(float(alt1) + float(alt2))
+    L_h = γ * r_eff
+    dh = float(alt2) - float(alt1)
+    return float(np.hypot(L_h, dh))
 
 def chord_distance_3d_m_vec(latlonalt: np.ndarray, lat_deg: float, lon_deg: float, alt_m: float) -> np.ndarray:
     """
     Vectorized 3D chord distance from (lat,lon,alt) to many points (meters).
     latlonalt: shape (N,3) with columns [LAT, LON, ALTITUDE]
     """
+    #φ1 = np.deg2rad(latlonalt[:,0]); λ1 = np.deg2rad(latlonalt[:,1])
+    #r1 = EARTH_R_M + latlonalt[:,2].astype(float)
+    #φ2 = np.deg2rad(lat_deg); λ2 = np.deg2rad(lon_deg)
+    #r2 = EARTH_R_M + float(alt_m)
+    #cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
+    #d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
+    #return np.sqrt(np.maximum(0.0, d2))
+
+    """
+    Vectorized GC+alt distance to many points (meters).
+    latlonalt: (N,3) columns [LAT, LON, ALTITUDE]
+    """
     φ1 = np.deg2rad(latlonalt[:,0]); λ1 = np.deg2rad(latlonalt[:,1])
-    r1 = EARTH_R_M + latlonalt[:,2].astype(float)
-    φ2 = np.deg2rad(lat_deg); λ2 = np.deg2rad(lon_deg)
-    r2 = EARTH_R_M + float(alt_m)
-    cosγ = np.sin(φ1)*np.sin(φ2) + np.cos(φ1)*np.cos(φ2)*np.cos(λ2 - λ1)
-    d2 = r1*r1 + r2*r2 - 2.0*r1*r2*cosγ
-    return np.sqrt(np.maximum(0.0, d2))
+    φ2 = np.deg2rad(lat_deg);         λ2 = np.deg2rad(lon_deg)
+    dφ = φ2 - φ1
+    dλ = λ2 - λ1
+    a = np.sin(dφ/2.0)**2 + np.cos(φ1)*np.cos(φ2)*np.sin(dλ/2.0)**2
+    a = np.clip(a, 0.0, 1.0)
+    γ = 2.0 * np.arcsin(np.sqrt(a))
+    r_eff = EARTH_R_M + 0.5*(latlonalt[:,2].astype(float) + float(alt_m))
+    L_h = γ * r_eff
+    dh = latlonalt[:,2].astype(float) - float(alt_m)
+    return np.hypot(L_h, dh)
 
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
     """Great-circle distance (meters). All angles in degrees."""
