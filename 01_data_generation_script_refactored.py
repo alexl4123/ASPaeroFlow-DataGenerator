@@ -28,6 +28,8 @@ import json
 import numpy as np
 import pandas as pd
 
+import random
+
 
 # -------------------------
 # Loading artifacts
@@ -226,6 +228,25 @@ def _pick_turnaround(tat_dist: np.ndarray, rng: np.random.Generator) -> float:
 # Generation
 # -------------------------
 
+def generate_flights(
+        airport_bins,
+        scale,
+        day_str,
+        bin_min,
+        rng):
+    
+    events = []
+
+    for origin, row in airport_bins.iterrows():
+        lam = np.maximum(row.values.astype(float) * float(scale), 0.0)
+        k = rng.poisson(lam)  # samples per bin
+        for b, kk in enumerate(k):
+            for _ in range(int(kk)):
+                events.append((_sample_time_in_bin(day_str, b, bin_min, rng), str(origin)))
+    return events
+
+
+
 def generate_synthetic_day(
     *,
     day_str: str,
@@ -238,6 +259,7 @@ def generate_synthetic_day(
     glob_spd: np.ndarray,
     bin_min: int,
     scale: float = 1.0,
+    flights: int = -1,
     seed: int | None = 42,
 ) -> pd.DataFrame:
     """
@@ -245,6 +267,12 @@ def generate_synthetic_day(
       flight_id, aircraft_id, origin, destination, departure_time  (ISO 8601, UTC)
     """
     rng = np.random.default_rng(seed)
+    random.seed(seed)
+
+    if flights < 1:
+        use_exact_number_flights = False
+    else:
+        use_exact_number_flights = True
 
     # 1) Build all departure events via Poisson sampling per airport×bin
     events: list[tuple[datetime, str]] = []
@@ -252,14 +280,26 @@ def generate_synthetic_day(
     # Ensure airport_bins has all bins as columns
     if airport_bins.shape[1] != n_bins:
         airport_bins = airport_bins.reindex(columns=range(n_bins), fill_value=0.0)
+    
+    if use_exact_number_flights is True:
 
-    for origin, row in airport_bins.iterrows():
-        lam = np.maximum(row.values.astype(float) * float(scale), 0.0)
-        k = rng.poisson(lam)  # samples per bin
-        for b, kk in enumerate(k):
-            for _ in range(int(kk)):
-                events.append((_sample_time_in_bin(day_str, b, bin_min, rng), str(origin)))
+        while len(events) < flights:
+            events += generate_flights(airport_bins, scale, day_str, bin_min, rng)
 
+
+        to_delete_items = len(events) - flights
+
+
+        to_delete = set(random.sample(range(len(events)),to_delete_items))
+
+        events = [x for i,x in enumerate(events) if not i in to_delete]
+        
+        
+
+    else:
+
+        events = generate_flights(airport_bins, scale, day_str, bin_min)
+    
     # Sort departures by time to process chaining
     events.sort(key=lambda x: x[0])
 
@@ -320,7 +360,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a synthetic flight day from model artifacts.")
     p.add_argument("--model-dir", type=Path, default=Path("./model_out"), help="Directory with exported artifacts")
     p.add_argument("--day", type=str, default="2019-06-15", help="UTC day YYYY-MM-DD to simulate")
-    p.add_argument("--scale", type=float, default=1.0, help="Scale factor for departures")
+    p.add_argument("--scale", type=float, default=1.0, help="Scale factor for departures (either scale or flights - not both)")
+    p.add_argument("--flights", type=int, default=-1, help="Number of flights to generate (either scale or flights - not both)")
     p.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
     p.add_argument("--bin-min", type=int, default=None, help="Override bin minutes (otherwise read from metadata)")
     p.add_argument("--out-dir", type=Path, default=Path("./data_out"), help="Default output folder")
@@ -355,6 +396,7 @@ def main():
         glob_spd=glob_spd,
         bin_min=bin_min,
         scale=args.scale,
+        flights = args.flights,
         seed=args.seed,
     )
 

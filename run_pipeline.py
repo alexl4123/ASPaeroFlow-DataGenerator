@@ -187,9 +187,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--day", type=str, default=C("day", None),
                    help="UTC YYYY-MM-DD to simulate (defaults to --target-day or 2019-06-15)")
     p.add_argument("--scale", type=float, default=float(C("scale", 1.0)))
+    p.add_argument("--flights", type=int, default=float(C("flight", -1)))
     # Multi-sampling
     p.add_argument("--flight-scales", type=str, default=None,
                    help="Comma-separated list of scales (overrides config flight-scales)")
+    p.add_argument("--flight-flights", type=str, default=None,
+                   help="Comma-separated list of number of flights (overrides config flight-flights)")
     p.add_argument("--flight-seeds", type=str, default=None,
                    help="Comma-separated list of seeds (overrides config flight-seeds)")
  
@@ -210,6 +213,7 @@ def parse_args() -> argparse.Namespace:
     # Sectors (03)
     p.add_argument("--cap-enroute", type=int, default=int(C("cap-enroute", 60)))
     p.add_argument("--cap-airport", type=int, default=int(C("cap-airport", 60000)))
+    p.add_argument("--sector-default-navaid-size", type=int, default=int(C("sector-default-navaid-size", 10)))
 
     # Flight plans (04)
     p.add_argument("--time-granularity", type=int, default=int(C("time-granularity", 1)),
@@ -231,10 +235,13 @@ def parse_args() -> argparse.Namespace:
 
     # derive multi-sampling lists with proper precedence: CLI > config > fallback
     cfg_scales = _cfg_get(cfg, "flight-scales", None)
+    cfg_flights = _cfg_get(cfg, "flight-flights", None)
     cfg_seeds  = _cfg_get(cfg, "flight-seeds",  None)
     cli_scales = _parse_list_float(args.flight_scales)
+    cli_flights = _parse_list_float(args.flight_flights)
     cli_seeds  = _parse_list_int(args.flight_seeds)
     args.scales = cli_scales if cli_scales is not None else (_parse_list_float(cfg_scales) if cfg_scales is not None else [args.scale])
+    args.flights = cli_flights if cli_flights is not None else (_parse_list_float(cfg_flights) if cfg_flights is not None else [args.flights])
     args.seeds  = cli_seeds  if cli_seeds  is not None else (_parse_list_int(cfg_seeds)  if cfg_seeds  is not None else [args.seed])
     # ensure unique order-preserving
     args.scales = list(dict.fromkeys(args.scales)); args.seeds = list(dict.fromkeys(args.seeds))
@@ -340,6 +347,7 @@ def main():
             "--path", str(nav_dir),
             "--cap-enroute", str(a.cap_enroute),
             "--cap-airport", str(a.cap_airport),
+            "--sector-default-navaid-size", str(a.sector_default_navaid_size),
         ])
     else:
         print(f"[SKIP] Sector capacities")
@@ -348,9 +356,34 @@ def main():
     # 2.A) DATA (01)
     # Build full (scale,seed) grid
     ds_pairs = _pair_grid(a.scales, a.seeds)
-    if not ds_pairs:
-        ds_pairs = [(a.scale, a.seed)]
-    first_scale, first_seed = ds_pairs[0]
+    ds_flight_pairs = _pair_grid(a.flights, a.seeds)
+
+    if ds_flight_pairs:
+        correctly_specified = True
+        new_pairs = []
+        for flights,seed in ds_flight_pairs:
+            if flights < 0:
+                correctly_specified = False
+            else:
+                new_pairs.append((int(flights),seed))
+
+        if not correctly_specified:
+            ds_flight_pairs = None
+        else:
+            ds_flight_pairs = new_pairs
+            ds_pairs = None
+
+    if not ds_pairs and not ds_flight_pairs:
+        if a.flights < 0:
+            ds_pairs = [(a.scale, a.seed)]
+        else:
+            ds_flight_pairs = [(a.flights, a.seed)]
+
+    if not ds_flight_pairs:
+        first_scale, first_seed = ds_pairs[0]
+    else:
+        first_scale, first_seed = ds_flight_pairs[0]
+
     first_ds_dir = exp_dir / _ds_name(first_scale, first_seed)
     first_ds_dir.mkdir(parents=True, exist_ok=True)
 
@@ -363,25 +396,30 @@ def main():
     ])
 
     if data_needed:
+
+        if not ds_pairs:
+            size_arg = ["--flights",str(first_scale)]
+        else:
+            size_arg = ["--scale",str(first_scale)]
         run([
             "python", "01_data_generation_script_refactored.py",
             "--model-dir", str(model_dir),
             "--day", sim_day,
-            "--scale", str(first_scale),
             "--seed", str(first_seed),
             "--out-dir", str(first_ds_dir),
             "--flat-out",
-        ])
+        ] + size_arg)
     else:
         print("[SKIP] Generating first dataset")
-
-
-
 
     # 5) DATASETS + FILED PLANS for all (scale,seed) pairs
     print(f"[5/6] Generating datasets")
     datasets = []
-    for idx, (scale, seed) in enumerate(ds_pairs):
+    if not ds_pairs:
+        pairs = ds_flight_pairs
+    else:
+        pairs = ds_pairs
+    for idx, (scale, seed) in enumerate(pairs):
         ds_dir = exp_dir / _ds_name(scale, seed)
         if not ds_dir.exists():
             ds_dir.mkdir(parents=True, exist_ok=True)
@@ -393,7 +431,10 @@ def main():
             file_exists(ds_dir / "aircrafts.csv"),
         ])
 
-
+        if not ds_pairs:
+            size_arg = ["--flights",str(scale)]
+        else:
+            size_arg = ["--scale",str(scale)]
 
         print(f"[5/{idx+1}/Data] Generating data: scale={scale:g}, seed={seed}")
         if data_needed:
@@ -401,11 +442,9 @@ def main():
                 "python", "01_data_generation_script_refactored.py",
                 "--model-dir", str(model_dir),
                 "--day", sim_day,
-                "--scale", str(scale),
-                "--seed", str(seed),
                 "--out-dir", str(ds_dir),
                 "--flat-out",
-            ])
+            ] + size_arg)
         else:
             print(f"[SKIP] Data present for {ds_dir.name}")
 
