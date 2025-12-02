@@ -119,7 +119,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     nav_dir = exp_in / "navgraph"
     if not nav_dir.exists():
         raise FileNotFoundError(f"No navgraph directory at {nav_dir}")
-
+    
     # --- read navgraph dictionary & edges
     vdf, ident_to_vid, vid_to_ident = _read_vertices(nav_dir)
 
@@ -220,7 +220,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
 
     colN, colS = "Navaid_ID", "Sector_ID"
 
-    # 1) Normalize/map Navaid_IDs (same as you had)
+    # 1) Normalize/map Navaid_IDs
     nsdf[colN] = (nsdf[colN].astype(str)
                             .str.strip()
                             .str.upper()
@@ -239,10 +239,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     # 4) Replace all label occurrences in one shot
     nsdf[colS] = nsdf[colS].replace(label_to_navaid)
 
-    # (Optional) If you expect Sector_ID to be integer-typed at the end:
-    # nsdf[colS] = pd.to_numeric(nsdf[colS], errors="raise")  # or .astype('Int64')
-
-    # 5) Your original validation + sort
+    # 5) Original validation + sort
     if (nsdf[colS] == "").any():
         raise ValueError("navaid_sector_assignment.csv contains empty Sector_ID values.")
 

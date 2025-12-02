@@ -441,6 +441,7 @@ def main():
             run([
                 "python", "01_data_generation_script_refactored.py",
                 "--model-dir", str(model_dir),
+                "--seed", str(seed),
                 "--day", sim_day,
                 "--out-dir", str(ds_dir),
                 "--flat-out",
