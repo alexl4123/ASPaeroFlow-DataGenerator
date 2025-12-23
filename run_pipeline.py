@@ -174,7 +174,7 @@ def parse_args() -> argparse.Namespace:
                    help="Root folder for experiment outputs")
 
     # Model builder (00)
-    p.add_argument("--csv-path", type=Path, default=Path(C("csv_path", "flightlist_20190601_20190630.csv")))
+    p.add_argument("--csv-path", type=Path, default=Path(C("csv-path", "flightlist_20190601_20190630.csv")))
     p.add_argument("--ourairports", type=Path, default=Path(C("ourairports", "./ourairports/airports.csv")))
     p.add_argument("--bin-min", type=int, default=int(C("bin-min", 60)))
     p.add_argument("--target-day", type=str, default=C("target-day", None))
@@ -256,7 +256,7 @@ def main():
 
     a.out_root.mkdir(parents=True, exist_ok=True)
 
-    sim_day = a.day or a.target_day or "2019-06-15"
+    sim_day = a.day or a.target_day or a.date_start
     exp_dir = derive_exp_dir(
         a.out_root, a.experiment_name, a.config, sim_day, a.scale,
         a.criterion, a.max_edge_km, a.neighbor_index
