@@ -209,6 +209,25 @@ def parse_args() -> argparse.Namespace:
                    help="Uniform altitude value for ALL vertices (default 0). Interpreted via --altitude-unit.")
     p.add_argument("--altitude-unit", type=str, default=C("altitude-unit","m"), choices=["m","fl"],
                    help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
+    p.add_argument("--grid-navpoints", type=str, default=C("grid-navpoints","false"),
+                   help="If true, ignore fix.dat/nav.dat and generate artificial grid navpoints (airports are still included).")
+    p.add_argument("--grid-nx", type=int, default=C("grid-nx",0),
+                   help="Number of grid navpoints west->east (required if --grid-navpoints true).")
+    p.add_argument("--grid-ny", type=int, default=C("grid-ny",0),
+                   help="Number of grid navpoints south->north (required if --grid-navpoints true).")
+    p.add_argument("--grid-prefix", type=str, default=C("grid-prefix","GRID"),
+                   help="Identifier prefix for generated grid navpoints (default 'GRID').")
+    p.add_argument("--grid-region-name", type=str, default=C("grid-region-name",None),
+                   help="Optional: pick a single region by name from config for grid generation (case-insensitive).")
+    p.add_argument("--grid-bounds", type=float, nargs=4, default=C("grid-bounds",None),
+                   metavar=("LAT_SOUTH","LON_WEST","LAT_NORTH","LON_EAST"),
+                   help="Optional explicit bbox for grid generation (overrides config regions).")
+    p.add_argument("--grid-rect-filter", type=str, default=C("grid-rect-filter","true"),
+                   help="If true and grid mode is enabled, filter vertices by the region bbox (not polygon). Default true.")
+    p.add_argument("--airport-include", type=str, default=C("airport-include",None),
+                   help="Optional: include ONLY these airports (ICAO). "
+                        "Either a comma/space-separated list like 'LOWW,EDDM' "
+                        "or a path to a text/CSV file containing ICAO codes.")
 
     # Sectors (03)
     p.add_argument("--cap-enroute", type=int, default=int(C("cap-enroute", 60)))
@@ -296,6 +315,11 @@ def main():
         if a.date_start:  cmd += ["--date-start", a.date_start]
         if a.date_end:    cmd += ["--date-end",   a.date_end]
         if a.target_day:  cmd += ["--target-day", a.target_day]
+        if a.airport_include:
+            cmd += [
+                    "--airport-include", str(a.airport_include)
+                    ]
+
         run(cmd)
     else:
         print("[SKIP] Model artifacts present → step 1 skipped.")
@@ -319,8 +343,29 @@ def main():
             "--out-dir", str(nav_dir),
             "--altitude", str(a.altitude),
             "--altitude-unit", str(a.altitude_unit),
-            "--flat-out",
+            "--flat-out"
         ]
+
+        if a.grid_navpoints.lower() == "true":
+            cmd += [
+            "--grid-navpoints", str(a.grid_navpoints),
+            "--grid-nx", str(a.grid_nx),
+            "--grid-ny", str(a.grid_ny),
+            "--grid-prefix", str(a.grid_prefix),
+            ]
+
+            if a.grid_region_name:
+                cmd += ["--grid-region-name", str(a.grid_region_name)]
+            
+            if a.grid_bounds:
+                cmd += ["--grid-bounds", str(a.grid_bounds)]
+
+            if a.grid_rect_filter:
+                cmd += ["--grid-rect-filter", str(a.grid_rect_filter)]
+        if a.airport_include:
+            cmd += [
+                    "--airport-include", str(a.airport_include)
+                    ]
 
         if a.config:
             cmd += ["--config", str(a.config)]

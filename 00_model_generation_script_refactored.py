@@ -48,11 +48,41 @@ import argparse
 from pathlib import Path
 from datetime import datetime, timezone
 import json
+import re
 
 from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+def parse_airport_include_spec(spec: str | None) -> set[str] | None:
+    """
+    Accepts either:
+      - comma/space/semicolon separated ICAO codes (e.g., "LOWW, EDDM")
+      - a path to a text/CSV file containing ICAO codes (anywhere in the file)
+
+    Returns a set of 4-letter ICAO codes (uppercased), or None if not provided.
+    """
+    if spec is None:
+        return None
+    s = str(spec).strip()
+    if not s:
+        return None
+
+    p = Path(s)
+    if p.exists() and p.is_file():
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            text = p.read_text(errors="ignore")
+    else:
+        text = s
+
+    toks = re.split(r"[,\s;]+", text)
+    codes = [t.strip().upper() for t in toks if t and t.strip()]
+    codes = [c for c in codes if re.fullmatch(r"[A-Z]{4}", c)]
+    return set(codes) if codes else None
 
 
 # -------------------------
@@ -126,6 +156,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--icao-only", type=str, default=str(cfg_get("icao-only", "true")), help="true/false")
     p.add_argument("--verify-ourairports", type=str, default=str(cfg_get("verify-ourairports", "true")),
                     help="true/false: verify airports exist in ourairports file (default true).")
+    p.add_argument("--airport-include", type=str, default=cfg_get("airport-include", None),
+                    help="Optional: include ONLY these airports (ICAO) in the model. "
+                         "Either a comma/space-separated list like 'LOWW,EDDM' "
+                         "or a path to a text/CSV file containing ICAO codes.")
     p.add_argument("--min-samples-per-od", type=int, default=int(cfg_get("min-samples-per-od", 1)),
                     help="Minimum samples for OD-specific durations")
     p.add_argument("--seed", type=int, default=(cfg_get("seed", None)),
@@ -542,6 +576,7 @@ def main():
 
     # Resolve ourairports verification
     allowed_icao: set[str] | None = None
+    airport_include = parse_airport_include_spec(args.airport_include)
     if args.verify_ourairports:
         default_oa_path = Path("./ourairports/airports.csv")
         is_default_path = (args.ourairports_path.resolve() == default_oa_path.resolve())
@@ -570,6 +605,25 @@ def main():
                       f"Proceeding without external airport verification.")
             else:
                 raise FileNotFoundError(f"OurAirports file not found: {args.ourairports_path}")
+
+    # Apply airport include-list (if provided). This is an additional hard filter:
+    # the model will only include flights whose origin AND destination are in the include-set.
+    if airport_include:
+        if allowed_icao is None:
+            allowed_icao = set(airport_include)
+            print(f"[INFO] - Airport include-list enabled without OurAirports verification: {len(allowed_icao)} ICAO(s).")
+        else:
+            before = set(allowed_icao)
+            allowed_icao = before.intersection(airport_include)
+            missing = set(airport_include) - before
+            if missing:
+                print(f"[INFO] - Airport include-list: {len(missing)} ICAO(s) not present in verified airport set "
+                      f"(or excluded by region filter): {sorted(missing)[:20]}{'...' if len(missing) > 20 else ''}")
+            print(f"[INFO] - Airport include-list enabled: keeping {len(allowed_icao)} ICAO(s) after verification/region filtering.")
+            if not allowed_icao:
+                print("[WARNING] - Airport include-list resulted in 0 allowed airports; output artifacts will be empty.")
+
+
     # Validate date selection
     if args.date_start and args.date_end:
         target_day = None
@@ -628,6 +682,7 @@ def main():
             f"_tat{int(args.min_tat)}-{int(args.max_tat)}"
             f"_dur{int(args.min_dur)}-{int(args.max_dur)}"
             f"_icao{'T' if args.icao_only else 'F'}"
+            f"_apinc{len(airport_include) if airport_include else 0}"
             f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
         )
 

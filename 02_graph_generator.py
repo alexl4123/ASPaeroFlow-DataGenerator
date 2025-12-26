@@ -9,6 +9,15 @@ Edges: undirected (A,B) if there is **no** third vertex C that is "closer along 
   RNG (default): keep (A,B) iff there is no C with max(d(A,C), d(B,C)) < d(A,B)
   Gabriel:      keep (A,B) iff there is no C with d(A,C)^2 + d(B,C)^2 < d(A,B)^2
 
+Grid override (when --grid-navpoints true):
+  To avoid airports "blocking" adjacency between grid points, edges are NOT
+  computed via RNG/Gabriel. Instead, grid navpoints are connected by 8-neighborhood:
+    connect (x,y) to (x2,y2) iff |x-x2|<=1 and |y-y2|<=1, excluding self.
+  Airports are NOT used for grid connectivity, but are attached to the grid by connecting
+  each airport to its closest grid navpoint(s) (closest-neighbor rule, as before).
+ 
+
+
 Distances are great-circle (haversine), reported in **meters** for edges.
 
 Region restriction:
@@ -44,6 +53,7 @@ import csv
 import json
 import math
 import os
+import re
 from pathlib import Path
 from time import time
 from typing import Dict, List, Tuple
@@ -62,6 +72,38 @@ def _tqdm(seq, **kwargs):
         return _t(seq, **kwargs)
     except Exception:
         return seq
+
+# -------------------------
+# Helpers: airport include list
+# -------------------------
+def parse_airport_include_spec(spec: str | None) -> set[str] | None:
+    """
+    Accepts either:
+      - comma/space/semicolon separated ICAO codes (e.g., "LOWW, EDDM")
+      - a path to a text/CSV file containing ICAO codes (anywhere in the file)
+
+    Returns a set of 4-letter ICAO codes (uppercased), or None if not provided.
+    """
+    if spec is None:
+        return None
+    s = str(spec).strip()
+    if not s:
+        return None
+
+    p = Path(s)
+    if p.exists() and p.is_file():
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            text = p.read_text(errors="ignore")
+    else:
+        text = s
+
+    toks = re.split(r"[,\s;]+", text)
+    codes = [t.strip().upper() for t in toks if t and t.strip()]
+    # Keep strictly ICAO-like tokens (4 letters)
+    codes = [c for c in codes if re.fullmatch(r"[A-Z]{4}", c)]
+    return set(codes) if codes else None
 
 # -------------------------
 # Geo helpers
@@ -182,6 +224,191 @@ def load_regions_from_config(path: Path) -> List[List[Tuple[float,float]]]:
     for item in cfg.get("considered_geographic_regions", []):
         regs.append(_pairs_from_flat_polygon(item.get("polygon", [])))
     return regs
+
+
+def load_region_items_from_config(path: Path) -> List[Tuple[str, List[Tuple[float,float]]]]:
+    """
+    Returns (region_name, polygon_pairs) from config.
+    Keeps compatibility with older configs by tolerating missing names.
+    """
+    if not path or not path.exists():
+        return []
+    with open(path, "r") as fh:
+        cfg = json.load(fh) or {}
+    out: List[Tuple[str, List[Tuple[float,float]]]] = []
+    for k, item in enumerate(cfg.get("considered_geographic_regions", [])):
+        name = (item.get("region-name") or item.get("region_name") or f"REGION_{k}").strip()
+        poly = _pairs_from_flat_polygon(item.get("polygon", []))
+        out.append((str(name), poly))
+    return out
+
+def _bbox_from_poly(poly: List[Tuple[float,float]]) -> Tuple[float,float,float,float]:
+    """Return (lat_min, lat_max, lon_min, lon_max) from polygon vertices."""
+    lats = [p[0] for p in poly]
+    lons = [p[1] for p in poly]
+    return (float(min(lats)), float(max(lats)), float(min(lons)), float(max(lons)))
+
+def in_any_bbox(lat: float, lon: float, bboxes: List[Tuple[float,float,float,float]]) -> bool:
+    if not bboxes:
+        return True
+    for (lat_min, lat_max, lon_min, lon_max) in bboxes:
+        if (lat_min <= lat <= lat_max) and (lon_min <= lon <= lon_max):
+            return True
+    return False
+
+def build_grid_navpoints_df(
+    bboxes: List[Tuple[float,float,float,float]],
+    nx: int,
+    ny: int,
+    altitude_m: float,
+    prefix: str = "GRID",
+    region_names: List[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Build a rectangular grid of navpoints for each bbox.
+    Grid points are placed at tile centers (nx by ny tiles).
+    """
+    if nx < 1 or ny < 1:
+        raise ValueError("Grid dimensions must satisfy nx>=1 and ny>=1")
+    rows: List[Tuple[str, float, float]] = []
+    for ridx, (lat_min, lat_max, lon_min, lon_max) in enumerate(bboxes):
+        # Ensure ordering (south<north, west<east)
+        lat_s, lat_n = (lat_min, lat_max) if lat_min <= lat_max else (lat_max, lat_min)
+        lon_w, lon_e = (lon_min, lon_max) if lon_min <= lon_max else (lon_max, lon_min)
+        dlat = (lat_n - lat_s) / float(ny)
+        dlon = (lon_e - lon_w) / float(nx)
+
+        rname = (region_names[ridx] if region_names and ridx < len(region_names) else f"R{ridx}")
+        safe_rname = "".join(ch if (ch.isalnum() or ch in ("-","_")) else "_" for ch in str(rname)).upper()
+
+        for j in range(ny):      # south -> north
+            lat = lat_s + (j + 0.5) * dlat
+            for i in range(nx):  # west -> east
+                lon = lon_w + (i + 0.5) * dlon
+                ident = f"{prefix}_{safe_rname}_Y{j:02d}X{i:02d}"
+                rows.append((ident, float(lat), float(lon)))
+
+    df = pd.DataFrame(rows, columns=["IDENTIFIER","LAT","LON"])
+    df["ALTITUDE"] = float(altitude_m)
+    df["IS_AIRPORT"] = 0
+    return df.drop_duplicates(subset=["IDENTIFIER"])
+
+
+def parse_grid_identifier(ident: str) -> Tuple[int, int] | None:
+    """
+    Parse grid identifiers of the form '*_Y<yy>X<xx>' and return (y, x) as ints.
+    Returns None if the identifier does not match the expected pattern.
+    """
+    m = re.search(r"_Y(\d+)X(\d+)$", str(ident).strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)))
+
+def build_grid_edges_8nb(vertices: pd.DataFrame) -> List[Tuple[int, int, float]]:
+    """
+    Build 8-neighborhood edges BETWEEN GRID NAVPOINTS ONLY.
+    i.e., connect (x,y) <-> (x2,y2) iff |x-x2|<=1 and |y-y2|<=1, excluding self.
+    Distances are computed using chord_distance_3d_m on the per-vertex ALTITUDE.
+    """
+    g = vertices[vertices["IS_AIRPORT"].astype(int) == 0].copy()
+    g["_yx"] = g["IDENTIFIER"].map(parse_grid_identifier)
+    g = g[g["_yx"].notna()]
+    if g.empty:
+        return []
+    # map (y,x) -> global vertex index
+    yx_to_idx: Dict[Tuple[int,int], int] = {tuple(yx): int(i) for i, yx in zip(g.index, g["_yx"])}
+    lat = vertices["LAT"].to_numpy(dtype=float)
+    lon = vertices["LON"].to_numpy(dtype=float)
+    alt = vertices["ALTITUDE"].to_numpy(dtype=float)
+    edges: List[Tuple[int,int,float]] = []
+    for (y, x), i in yx_to_idx.items():
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                j = yx_to_idx.get((y + dy, x + dx))
+                if j is None or j <= i:
+                    continue
+                d = chord_distance_3d_m(lat[i], lon[i], alt[i], lat[j], lon[j], alt[j])
+                edges.append((i, j, float(d)))
+    return edges
+
+def build_airport_to_nav_edges(
+    vertices: pd.DataFrame,
+    *,
+    k_nearest: int = 3,
+    max_edge_m: float | None = None,
+) -> List[Tuple[int, int, float]]:
+    """
+    Attach airports to navpoints by connecting each airport to its closest navpoint(s).
+    - Uses BallTree (haversine) if available; falls back to brute force otherwise.
+    - Distances for edges are computed using chord_distance_3d_m (3D with ALTITUDE).
+    - If max_edge_m is provided, we prefer neighbors within that radius, but always
+      ensure at least one attachment edge per airport (to its closest navpoint).
+    """
+    ap_mask = vertices["IS_AIRPORT"].astype(int) == 1
+    nav_mask = vertices["IS_AIRPORT"].astype(int) == 0
+    ap_idx = vertices.index[ap_mask].to_numpy(dtype=int)
+    nav_idx = vertices.index[nav_mask].to_numpy(dtype=int)
+    if ap_idx.size == 0 or nav_idx.size == 0:
+        return []
+
+    lat = vertices["LAT"].to_numpy(dtype=float)
+    lon = vertices["LON"].to_numpy(dtype=float)
+    alt = vertices["ALTITUDE"].to_numpy(dtype=float)
+
+    kq = int(max(1, min(k_nearest, nav_idx.size)))
+    edges: List[Tuple[int, int, float]] = []
+
+    # Prefer BallTree (fast for large grids), fallback to brute force.
+    try:
+        from sklearn.neighbors import BallTree
+        nav_rad = np.deg2rad(np.column_stack([lat[nav_idx], lon[nav_idx]]))
+        tree = BallTree(nav_rad, metric="haversine")
+        ap_rad = np.deg2rad(np.column_stack([lat[ap_idx], lon[ap_idx]]))
+        dist_rad, nn = tree.query(ap_rad, k=kq, return_distance=True)
+
+        for row, ai in enumerate(ap_idx):
+            chosen: List[Tuple[int, float]] = []
+            # Try to keep within max_edge_m if provided
+            for r in range(kq):
+                nj_local = int(nn[row, r])
+                aj = int(nav_idx[nj_local])
+                d_m = chord_distance_3d_m(lat[ai], lon[ai], alt[ai], lat[aj], lon[aj], alt[aj])
+                if (max_edge_m is None) or (d_m <= float(max_edge_m)):
+                    chosen.append((aj, float(d_m)))
+            # Guarantee at least one attachment (closest) even if outside max_edge_m
+            if not chosen:
+                aj = int(nav_idx[int(nn[row, 0])])
+                d_m = chord_distance_3d_m(lat[ai], lon[ai], alt[ai], lat[aj], lon[aj], alt[aj])
+                chosen = [(aj, float(d_m))]
+            for aj, d_m in chosen:
+                u, v = (ai, aj) if ai < aj else (aj, ai)
+                edges.append((u, v, float(d_m)))
+        return edges
+
+    except Exception:
+        nav_latlonalt = np.column_stack([lat[nav_idx], lon[nav_idx], alt[nav_idx]]).astype(float)
+        for ai in ap_idx:
+            d_all = chord_distance_3d_m_vec(nav_latlonalt, lat[ai], lon[ai], alt[ai]).astype(float)
+            order = np.argsort(d_all)
+            chosen: List[Tuple[int, float]] = []
+            for pos in order[:kq]:
+                aj = int(nav_idx[int(pos)])
+                d_m = float(d_all[int(pos)])
+                if (max_edge_m is None) or (d_m <= float(max_edge_m)):
+                    chosen.append((aj, d_m))
+            if not chosen:
+                aj = int(nav_idx[int(order[0])])
+                chosen = [(aj, float(d_all[int(order[0])]))]
+            for aj, d_m in chosen:
+                u, v = (ai, aj) if ai < aj else (aj, ai)
+                edges.append((u, v, float(d_m)))
+        return edges
+
+
+
+
 
 def in_any_region(lat: float, lon: float, regions: List[List[Tuple[float,float]]]) -> bool:
     if not regions:
@@ -319,7 +546,18 @@ def build_vertices(
     regions: List[List[Tuple[float,float]]],
     icao_only: bool = True,
     od_filter: pd.DataFrame | None = None,
-    altitude_m: float = 0.0
+    altitude_m: float = 0.0,
+    airport_include: set[str] | None = None,
+    # Grid navpoint mode (if enabled, ignore fix.dat/nav.dat and generate artificial grid navpoints)
+    grid_only: bool = False,
+    grid_nx: int = 0,
+    grid_ny: int = 0,
+    grid_bboxes: List[Tuple[float,float,float,float]] | None = None,
+    grid_prefix: str = "GRID",
+    grid_region_names: List[str] | None = None,
+    # If True, region filtering uses bbox(es) instead of polygon ray-cast (useful for grid mode)
+    region_filter_use_bbox: bool = False,
+    region_bboxes: List[Tuple[float,float,float,float]] | None = None,
     ) -> pd.DataFrame:
     """
     Returns a DataFrame with columns: IDENTIFIER, LAT, LON, ALTITUDE (float, meters)
@@ -328,37 +566,64 @@ def build_vertices(
     ap = load_ourairports_df(airports_csv, icao_only=icao_only)
 
     ap = ap.rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-    ap["ALTITUDE"] = float(altitude_m)
+    # In grid mode: airports at FL0 (0m). Otherwise: keep legacy uniform-altitude behavior.
+    ap["ALTITUDE"] = 0.0 if grid_only else float(altitude_m)
     ap["IS_AIRPORT"] = 1
+
+    # Optional: hard inclusion list for airports (ICAO codes)
+    if airport_include:
+        # IDENTIFIER is already uppercased in loader, but keep this defensive
+        ap["IDENTIFIER"] = ap["IDENTIFIER"].astype(str).str.strip().str.upper()
+        ap = ap[ap["IDENTIFIER"].isin(set(airport_include))]
+ 
 
     # If OD provided: keep only airports that appear in origin or destination
     #if od_filter is not None and not od_filter.empty:
     #    ap = ap[ap["IDENTIFIER"].isin(set(od_filter["origin"]).union(set(od_filter["destination"])))]
 
     # Navpoints
-    fix_path = nav_dir / "fix.dat"
-    nav_path = nav_dir / "nav.dat"
-    nav_frames = []
-    if fix_path.exists():
-        fdf = parse_fix(fix_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-        fdf["ALTITUDE"] = float(altitude_m)
-        fdf["IS_AIRPORT"] = 0
-        nav_frames.append(fdf)
-    if nav_path.exists():
-        ndf = parse_nav(nav_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-        ndf["ALTITUDE"] = float(altitude_m)
-        ndf["IS_AIRPORT"] = 0
-        nav_frames.append(ndf)
     nav_cols = ["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]
-    nav = pd.concat(nav_frames, ignore_index=True) if nav_frames else pd.DataFrame(columns=nav_cols)
+    if grid_only:
+        if not grid_bboxes:
+            raise ValueError("grid_only=True but no grid_bboxes were provided.")
+        nav = build_grid_navpoints_df(
+            bboxes=grid_bboxes,
+            nx=int(grid_nx),
+            ny=int(grid_ny),
+            altitude_m=float(altitude_m),
+            prefix=str(grid_prefix or "GRID"),
+            region_names=grid_region_names,
+        )
+        nav = nav[nav_cols]
+    else:
+        fix_path = nav_dir / "fix.dat"
+        nav_path = nav_dir / "nav.dat"
+        nav_frames = []
+        if fix_path.exists():
+            fdf = parse_fix(fix_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
+            fdf["ALTITUDE"] = float(altitude_m)
+            fdf["IS_AIRPORT"] = 0
+            nav_frames.append(fdf)
+        if nav_path.exists():
+            ndf = parse_nav(nav_path).rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
+            ndf["ALTITUDE"] = float(altitude_m)
+            ndf["IS_AIRPORT"] = 0
+            nav_frames.append(ndf)
+        nav = pd.concat(nav_frames, ignore_index=True) if nav_frames else pd.DataFrame(columns=nav_cols)
 
     # Merge, preferring airport rows on IDENTIFIER collisions
     allv = pd.concat([ap, nav], ignore_index=True)
 
     allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True)  # airports first
 
+    # Important: in non-grid mode, legacy behavior was "uniform altitude for all vertices".
+    # In grid mode, we need airports at 0 and navpoints at altitude_m. We already set airports
+    # to 0.0 above; grid/navpoints set to altitude_m. Nothing else to do here.
     # Region filter
-    if regions:
+    if region_filter_use_bbox and region_bboxes:
+        mask = allv.apply(lambda r: in_any_bbox(float(r["LAT"]), float(r["LON"]), region_bboxes), axis=1)
+        allv = allv[mask]
+    elif regions:
         mask = allv.apply(lambda r: in_any_region(float(r["LAT"]), float(r["LON"]), regions), axis=1)
         allv = allv[mask]
 
@@ -427,20 +692,6 @@ def _neighbors_within_maxdist_balltree(latlonalt: np.ndarray, max_edge_m: float,
                 last_print = now
 
     return nbr_idx, nbr_dst, pair_list
-
-def _choose_nside_for_radius(radius_rad: float) -> int:
-    """
-    Choose HEALPix nside so that the equivalent circle radius of a pixel is <= ~radius_rad/2.
-    Pixel area = 4π / (12 nside^2); r_eq = sqrt(area/π).
-    """
-    if radius_rad <= 0:
-        return 64
-    target = radius_rad / 2.0
-    r_eq = target
-    area = math.pi * (r_eq ** 2)
-    nside = int(np.sqrt((4.0 * math.pi) / (12.0 * area)))
-    nside = max(1, min(32768, nside))
-    return nside
 
 def _neighbors_within_maxdist(latlonalt: np.ndarray, max_edge_m: float, progress_msg: str = "Neighbor search"):
     """
@@ -759,6 +1010,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--od-file", type=Path, default=None, help="Optional CSV with columns origin,destination to restrict airports.")
     p.add_argument("--aircrafts-file", type=Path, default=None, help="Optional aircrafts.csv (speeds); loaded but not used for edges.")
     p.add_argument("--icao-only", type=str, default="true", help="Keep only 4-letter ICAO airports (default true)")
+    p.add_argument("--airport-include", type=str, default=None,
+                   help="Optional: include ONLY these airports (ICAO). "
+                        "Either a comma/space-separated list like 'LOWW,EDDM' "
+                        "or a path to a text/CSV file containing ICAO codes.")
     p.add_argument("--criterion", type=str, default="rng", choices=["rng","gabriel"], help="Edge test: relative-neighborhood (rng) or gabriel.")
     p.add_argument("--max-edge-km", type=float, default=350.0, help="Only consider edges <= this geodesic distance (km).")
     p.add_argument("--out-dir", type=Path, default=Path("./navgraph_out"), help="Output folder for vertices.csv & edges.csv")
@@ -777,6 +1032,24 @@ def parse_args() -> argparse.Namespace:
                    help="Uniform altitude value for ALL vertices (default 0). Interpreted via --altitude-unit.")
     p.add_argument("--altitude-unit", type=str, default="m", choices=["m","fl"],
                    help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
+
+    # --- Grid navpoint mode ---
+    p.add_argument("--grid-navpoints", type=str, default="false",
+                   help="If true, ignore fix.dat/nav.dat and generate artificial grid navpoints (airports are still included).")
+    p.add_argument("--grid-nx", type=int, default=0,
+                   help="Number of grid navpoints west->east (required if --grid-navpoints true).")
+    p.add_argument("--grid-ny", type=int, default=0,
+                   help="Number of grid navpoints south->north (required if --grid-navpoints true).")
+    p.add_argument("--grid-prefix", type=str, default="GRID",
+                   help="Identifier prefix for generated grid navpoints (default 'GRID').")
+    p.add_argument("--grid-region-name", type=str, default=None,
+                   help="Optional: pick a single region by name from config for grid generation (case-insensitive).")
+    p.add_argument("--grid-bounds", type=float, nargs=4, default=None,
+                   metavar=("LAT_SOUTH","LON_WEST","LAT_NORTH","LON_EAST"),
+                   help="Optional explicit bbox for grid generation (overrides config regions).")
+    p.add_argument("--grid-rect-filter", type=str, default="true",
+                   help="If true and grid mode is enabled, filter vertices by the region bbox (not polygon). Default true.")
+
     return p.parse_args()
 
 # -------------------------
@@ -785,6 +1058,7 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
     args.icao_only = True if str(args.icao_only).strip().lower() in ("true","t","1","yes","on") else False
+    airport_include = parse_airport_include_spec(args.airport_include)
 
     # Resolve connectivity flag early (used in tag)
     do_connect = str(args.enforce_connected).strip().lower() in ("true","t","1","yes","on")
@@ -802,26 +1076,68 @@ def main():
             f"_idx-{args.neighbor_index}"
             f"_conn{'T' if do_connect else 'F'}knn{int(args.centroid_knn)}"
             f"_icao{'T' if args.icao_only else 'F'}"
+            f"_apinc{len(airport_include) if airport_include else 0}"
             f"_nav-{args.navdir.name}_ap-{args.ourairports.name}"
         )
         exp_dir = out_root / f"{ts}__{tag}"
     exp_dir.mkdir(parents=True, exist_ok=True)
  
 
-    # 1) Load config regions
-    regions = load_regions_from_config(args.config) if args.config else []
+    # 1) Load config regions (polygons + names)
+    region_items = load_region_items_from_config(args.config) if args.config else []
+    regions = [poly for (_, poly) in region_items]
     if regions:
         print(f"[1/6] Loaded {len(regions)} geographic region(s) from {args.config}")
+
+    # Resolve grid mode
+    grid_enabled = str(args.grid_navpoints).strip().lower() in ("true","t","1","yes","on")
+    if grid_enabled:
+        if int(args.grid_nx) < 1 or int(args.grid_ny) < 1:
+            raise ValueError("Grid mode enabled but --grid-nx/--grid-ny are not >= 1.")
+        # Determine bboxes (explicit overrides config)
+        grid_bboxes: List[Tuple[float,float,float,float]] = []
+        grid_region_names: List[str] = []
+        if args.grid_bounds is not None:
+            lat_s, lon_w, lat_n, lon_e = [float(x) for x in args.grid_bounds]
+            lat_min, lat_max = (lat_s, lat_n) if lat_s <= lat_n else (lat_n, lat_s)
+            lon_min, lon_max = (lon_w, lon_e) if lon_w <= lon_e else (lon_e, lon_w)
+            grid_bboxes = [(lat_min, lat_max, lon_min, lon_max)]
+            grid_region_names = ["BBOX"]
+        else:
+            if not region_items:
+                raise ValueError("Grid mode enabled but no --grid-bounds provided and no regions found in --config.")
+            # Optional: choose one region by name
+            if args.grid_region_name:
+                want = str(args.grid_region_name).strip().lower()
+                region_items_sel = [(n,p) for (n,p) in region_items if str(n).strip().lower() == want]
+                if not region_items_sel:
+                    known = ", ".join([n for (n,_) in region_items])
+                    raise ValueError(f"--grid-region-name '{args.grid_region_name}' not found. Known: {known}")
+                region_items_use = region_items_sel
+            else:
+                region_items_use = region_items
+            for (nm, poly) in region_items_use:
+                grid_bboxes.append(_bbox_from_poly(poly))
+                grid_region_names.append(str(nm))
+
+        # Region filter mode in grid: bbox by default
+        region_filter_use_bbox = str(args.grid_rect_filter).strip().lower() in ("true","t","1","yes","on")
+        region_bboxes = grid_bboxes if region_filter_use_bbox else None
+
 
     # 2) Load OD pairs & aircrafts (optional)
     od_df = load_od_pairs(args.od_file)
     if not od_df.empty:
         print(f"[2/6] Loaded OD pairs: {len(od_df):,} rows (restricting airports to observed ICAOs).")
 
-    # 3) Build vertices (airports + navpoints) with region filtering
+    # 3) Build vertices (airports + navpoints OR airports + grid-navpoints) with region filtering
     print(f"[3/6] Loading airports and navpoints...")
     altitude_m = to_altitude_m(args.altitude, args.altitude_unit)
     print(f"{altitude_m} = {args.altitude} --> {args.altitude_unit}")
+
+    if airport_include:
+        print(f"[3/6] Airport include-list enabled: {len(airport_include)} ICAO(s)")
+
     vertices = build_vertices(
         airports_csv=args.ourairports,
         nav_dir=args.navdir,
@@ -829,6 +1145,15 @@ def main():
         icao_only=args.icao_only,
         od_filter=od_df if not od_df.empty else None,
         altitude_m = altitude_m,
+        airport_include = airport_include,
+        grid_only=bool(grid_enabled),
+        grid_nx=int(args.grid_nx) if grid_enabled else 0,
+        grid_ny=int(args.grid_ny) if grid_enabled else 0,
+        grid_bboxes=(grid_bboxes if grid_enabled else None),
+        grid_prefix=str(args.grid_prefix or "GRID"),
+        grid_region_names=(grid_region_names if grid_enabled else None),
+        region_filter_use_bbox=(region_filter_use_bbox if grid_enabled else False),
+        region_bboxes=(region_bboxes if grid_enabled else None),
     )
     N = len(vertices)
     if N == 0:
@@ -839,32 +1164,57 @@ def main():
     write_vertices_csv(vertices, exp_dir)
     print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
  
-    # 5) Neighbor search (pre-candidate edges within max distance) with index
-    print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
     latlonalt = vertices[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
-    nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
-        latlonalt, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
-    )
 
+    if grid_enabled:
+        # Grid override: enforce local 8-neighborhood connectivity between grid points only.
+        # Airports remain in vertices.csv but are excluded from grid adjacency edges.
+        print("[5/6] Grid mode enabled: building 8-neighborhood edges between grid navpoints (no RNG/Gabriel).")
+        edges_kept = build_grid_edges_8nb(vertices)
+        print(f"      Kept edges (grid 8-neighborhood): {len(edges_kept):,}")
 
-    #nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist(latlon, max_edge_m=args.max_edge_km*1000.0, progress_msg="Neighbor search")
-    print(f"      Candidate pairs: {len(pair_list):,}")
+        # Attach airports to closest navpoints (to avoid detached airport components)
+        ap_attach = build_airport_to_nav_edges(
+            vertices,
+            k_nearest=4,
+            max_edge_m=float(args.max_edge_km) * 1000.0,
+        )
+        if ap_attach:
+            seen = {(min(i, j), max(i, j)) for (i, j, _) in edges_kept}
+            added = 0
+            for (i, j, d) in ap_attach:
+                u, v = (i, j) if i < j else (j, i)
+                if (u, v) in seen:
+                    continue
+                edges_kept.append((u, v, float(d)))
+                seen.add((u, v))
+                added += 1
+            print(f"      Added airport attachment edges: {added:,}")
+        # Keep step numbering stable for logs
+        print("[6/6] Skipped RNG/Gabriel edge test in grid mode.")
+    else:
+        # 5) Neighbor search (pre-candidate edges within max distance) with index
+        print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
+        nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
+            latlonalt, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
+        )
+        print(f"      Candidate pairs: {len(pair_list):,}")
 
-    # 6) Edge test (RNG / Gabriel)
-    print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
-
-    edges_kept = build_edges_rng_or_gabriel(
-        latlon=latlonalt,
-        nbr_idx=nbr_idx,
-        nbr_dst=nbr_dst,
-        pair_list=pair_list,
-        criterion=args.criterion.lower(),
-        progress_interval_s=int(args.progress_interval),
-    )
-    print(f"      Kept edges: {len(edges_kept):,}")
+        # 6) Edge test (RNG / Gabriel)
+        print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
+        edges_kept = build_edges_rng_or_gabriel(
+            latlon=latlonalt,
+            nbr_idx=nbr_idx,
+            nbr_dst=nbr_dst,
+            pair_list=pair_list,
+            criterion=args.criterion.lower(),
+            progress_interval_s=int(args.progress_interval),
+        )
+        print(f"      Kept edges: {len(edges_kept):,}")
+ 
 
     # 7) Enforce connectivity (optional, default on)
-    if do_connect:
+    if do_connect and (not grid_enabled):
         print("[7/7] Enforcing connectivity...")
         edges_kept, n_added = ensure_connected(
             latlonalt=latlonalt,
@@ -877,7 +1227,11 @@ def main():
         k_final = nx.number_connected_components(G_final)
         print(f"      Components after: {k_final} (added {n_added} bridging edge(s))")
     else:
-        print("[7/7] Skipped connectivity enforcement by user request.")
+        if grid_enabled:
+            print("[7/7] Skipped connectivity enforcement in grid mode (grid is already connected by construction).")
+        else:
+            print("[7/7] Skipped connectivity enforcement by user request.")
+
 
     # Write edges.csv (using IDENTIFIER names instead of numeric indices)
     write_edges_csv(edges_kept, exp_dir, vertices["IDENTIFIER"].astype(str).tolist())
