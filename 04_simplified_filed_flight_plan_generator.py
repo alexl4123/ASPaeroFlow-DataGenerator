@@ -234,16 +234,12 @@ def _build_speed_graph_cache(G_base: nx.Graph, speeds_kts: List[float], time_gra
 
 
 def generate_filed_plans(
-    data_dir: Path,
-    navgraph_dir: Path,
+    G_base, ident_to_vid, vid_to_ident, nodes_are_int,
+    flights, aircraft_speed,
     time_granularity: int = 4,
     default_speed_kts: float = 450.0,
 ) -> pd.DataFrame:
     # Load inputs
-    G_base, ident_to_vid, vid_to_ident, nodes_are_int = _load_navgraph(navgraph_dir)
-
-    flights = _load_flights(data_dir)
-    aircraft_speed = _load_aircrafts(data_dir)
 
     # Build mapping ICAO -> vertex id (airports)
     missing_airports = []
@@ -378,12 +374,44 @@ def main():
     if not args.navgraph_dir.exists():
         raise FileNotFoundError(f"navgraph directory not found: {args.navgraph_dir}")
 
+    G_base, ident_to_vid, vid_to_ident, nodes_are_int = _load_navgraph(args.navgraph_dir)
+
+    flights = _load_flights(args.data_dir)
+    aircraft_speed = _load_aircrafts(args.data_dir)
+
     df = generate_filed_plans(
-        data_dir=args.data_dir,
-        navgraph_dir=args.navgraph_dir,
-        time_granularity=args.time_granularity,
+        G_base, ident_to_vid, vid_to_ident, nodes_are_int,
+        flights, aircraft_speed,
+        time_granularity = args.time_granularity,
         default_speed_kts=args.default_speed_kts,
     )
+
+    # Handle potential overlapping flights:
+    for aircraft in list(set(flights["aircraft_id"])):
+        aircraft_flights = flights[flights["aircraft_id"] == aircraft]
+        if aircraft_flights.shape[0] == 1:
+            # If only 1 flight, then there cannot be an issue of overlapping flights
+            continue
+        
+        aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
+        for index in range(1,aircraft_flights.shape[0]):
+
+            prev_flight_id = aircraft_flights.iloc[index-1,0]
+            cur_flight_id = aircraft_flights.iloc[index,0]
+
+            prev_flight = df[df["Flight_ID"] == prev_flight_id]
+            cur_flight = df[df["Flight_ID"] == cur_flight_id]
+
+            prev_flight_max = max(prev_flight["Time"])
+            cur_flight_min = min(cur_flight["Time"])
+
+            if prev_flight_max >= cur_flight_min:
+                diff_needed = (prev_flight_max - cur_flight_min) + 1
+                indices_cur_flight = df.index[df["Flight_ID"] == cur_flight_id].tolist()
+                df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] + diff_needed
+
+        
+
     out_path = args.data_dir / "filed_flights.csv"
     df.to_csv(out_path, index=False)
     print(f"Done. Wrote {len(df):,} trajectory rows to {out_path.resolve()}")

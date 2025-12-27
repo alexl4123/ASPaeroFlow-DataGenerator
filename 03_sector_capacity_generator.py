@@ -92,7 +92,7 @@ def _partition_connected(enroute_ids: list, adj: dict, order: dict, n: int) -> l
     Deterministic by following the vertex order from vertices.csv.
     If a connected component has < n nodes, it forms a smaller sector.
     """
-    unassigned = set(enroute_ids)
+    ungrouped = set(enroute_ids)
     groups = []
     # seed order = appearance in vertices.csv
     def neighbors_sorted(x):
@@ -100,18 +100,24 @@ def _partition_connected(enroute_ids: list, adj: dict, order: dict, n: int) -> l
         return sorted((y for y in adj.get(x, []) if y in unassigned), key=lambda z: order.get(z, 10**12))
 
     for seed in enroute_ids:
-        if seed not in unassigned:
+        if seed not in ungrouped:
             continue
+
         group = []
+        unassigned = ungrouped.copy()
+
         q = deque([seed])
         unassigned.remove(seed)
+
         while q and len(group) < n:
             x = q.popleft()
             group.append(x)
+            ungrouped.remove(x)
             for y in neighbors_sorted(x):
                 if y in unassigned:
-                    unassigned.remove(y)
                     q.append(y)
+                    unassigned.remove(y)
+
         groups.append(group)
     return groups
 
