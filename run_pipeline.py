@@ -232,6 +232,7 @@ def parse_args() -> argparse.Namespace:
     # Sectors (03)
     p.add_argument("--cap-enroute", type=int, default=int(C("cap-enroute", 60)))
     p.add_argument("--cap-airport", type=int, default=int(C("cap-airport", 60000)))
+    p.add_argument("--convex-sectors", type=int, default=int(C("convex-sectors",0)), help="--convex-sectors=0 (false) or --convex-sectors=1 (true)")
     p.add_argument("--sector-default-navaid-size", type=int, default=int(C("sector-default-navaid-size", 10)))
 
     # Flight plans (04)
@@ -393,6 +394,7 @@ def main():
             "--cap-enroute", str(a.cap_enroute),
             "--cap-airport", str(a.cap_airport),
             "--sector-default-navaid-size", str(a.sector_default_navaid_size),
+            "--convex-sectors", str(a.convex_sectors),
         ])
     else:
         print(f"[SKIP] Sector capacities")
