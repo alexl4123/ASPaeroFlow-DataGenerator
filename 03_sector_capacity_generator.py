@@ -23,6 +23,7 @@ import re
 import numpy as np
 from collections import deque
 import pandas as pd
+import networkx as nx
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate sectors.csv with per-vertex capacities.")
@@ -34,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cap-airport", type=int, default=60000, help="Capacity for airport sectors (default 60000).")
     p.add_argument("--sector-default-navaid-size", type=int, default=10,
                    help="Default number n of navaids per sector; sectors are built as connected subgraphs (BFS growth).")
+    p.add_argument("--convex-sectors", type=int, default=0,
+                   help="--convex-sectors=0 (false) or --convex-sectors=1 (true)")
     p.add_argument("--out", type=Path, default=Path("./navgraph_out/world/sectors.csv"), help="Output CSV path.")
     return p.parse_args()
 
@@ -121,6 +124,107 @@ def _partition_connected(enroute_ids: list, adj: dict, order: dict, n: int) -> l
         groups.append(group)
     return groups
 
+def _partition_connected_convex(enroute_ids: list, edf, order: dict, n: int) -> list[list]:
+    """
+    Greedy BFS-based partition into connected groups of size ~n.
+    Deterministic by following the vertex order from vertices.csv.
+    If a connected component has < n nodes, it forms a smaller sector.
+    """
+
+    v_name_to_int = {}
+    v_int_to_name = {}
+
+    G = nx.Graph() 
+    index = 0
+    for enroute_id in enroute_ids:
+        v_name_to_int[enroute_id] = index
+        v_int_to_name[index] = enroute_id
+        G.add_node(index)
+        index += 1
+
+
+    weighted_edges = []
+    for index, edge in edf.iterrows():
+
+        if edge.V0 in v_name_to_int and edge.V1 in v_name_to_int:
+            weighted_edges.append((v_name_to_int[edge.V0],v_name_to_int[edge.V1],float(edge.D)))
+
+    G.add_weighted_edges_from(weighted_edges)
+
+    sectors = []
+
+    unmarked = v_int_to_name.copy()
+
+    while len(unmarked) > 0:
+        for key in unmarked.keys():
+            seed = key
+            break
+
+        queue = [seed]
+        sector = {}
+
+        while len(sector) < n and len(queue) > 0:
+
+            v = queue.pop(0)
+            sector[v] = True
+
+            S, convexity_possible = _convexity(G, sector, v, unmarked)
+
+            if convexity_possible is True:
+                
+                neighbors = []
+                for v_prim in S:
+                    sector[v_prim] = True
+                    unmarked.pop(v_prim)
+                    neighbors += G.neighbors(v_prim)
+
+                    if v_prim in queue:
+                        queue.remove(v_prim)
+
+                unmarked.pop(v)
+                neighbors += G.neighbors(v)
+
+                for neighbor in neighbors:
+                    if neighbor not in queue and neighbor not in sector and neighbor in unmarked:
+                        queue.append(neighbor)
+
+            else:
+                del sector[v]
+        
+        sectors.append(list(sector.keys()))
+
+    renamed_sectors = []
+    for sector in sectors:
+        renamed_sector = []
+        for v in sector:
+            renamed_sector.append(v_int_to_name[v])
+
+        renamed_sectors.append(renamed_sector)
+
+    return renamed_sectors
+
+
+def _convexity(G, sector, v, unmarked):
+    S = []
+    for v_prim in sector:
+        if v == v_prim:
+            continue
+
+        paths = nx.all_shortest_paths(G,source= v, target=v_prim, weight="weight")
+        for path in paths:
+            for v_prim_prim in path:
+                if v_prim_prim not in unmarked and v_prim_prim not in sector:
+                    return [], False
+
+                if v_prim_prim not in sector:
+                    S.append(v_prim_prim)
+
+    S = list(set(S))
+
+    return S, True
+
+
+
 
 def main():
     args = parse_args()
@@ -188,8 +292,14 @@ def main():
         print("       Loading edges...")
         edf = pd.read_csv(edges_path, dtype=object, low_memory=False)
         enroute_set = set(enroute_ids)
-        adj = _build_adjacency(edf, id_col=id_col, allowed_ids=enroute_set)
-        groups = _partition_connected(enroute_ids, adj, order, n=args.sector_default_navaid_size)
+        if args.convex_sectors == 0:
+            adj = _build_adjacency(edf, id_col=id_col, allowed_ids=enroute_set)
+            groups = _partition_connected(enroute_ids, adj, order, n=args.sector_default_navaid_size)
+        else:
+            groups = _partition_connected_convex(enroute_ids, edf, order, n=args.sector_default_navaid_size)
+
+        #print(groups)
+
     print(f"       Created {len(groups)} connected en-route sectors (target size n={args.sector_default_navaid_size}).")
 
     # Create human-friendly sector IDs
