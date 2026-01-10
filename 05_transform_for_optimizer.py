@@ -129,28 +129,35 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
 
     edf = pd.read_csv(epath)
     edf = _norm_edges_cols(edf)
-    # endpoints may be numeric vertex ids **or** IDENTIFIER strings
-    s_ints, s_isnum = _safe_int_series(edf["source"])
-    t_ints, t_isnum = _safe_int_series(edf["target"])
-    if s_isnum.all() and t_isnum.all():
-        edf["source"] = s_ints.astype(int)
-        edf["target"] = t_ints.astype(int)
-    else:
-        # map IDENTIFIER → vertex id using vertices.csv dictionary
-        s_ids = edf["source"].astype(str).str.strip().str.upper().map(ident_to_vid)
-        t_ids = edf["target"].astype(str).str.strip().str.upper().map(ident_to_vid)
-        # sanity check for unknown identifiers
-        if s_ids.isna().any() or t_ids.isna().any():
-            bad_s = edf.loc[s_ids.isna(), "source"].head(5).tolist()
-            bad_t = edf.loc[t_ids.isna(), "target"].head(5).tolist()
-            raise KeyError(
-                f"edges.csv contains IDENTIFIERs not found in vertices.csv. "
-                f"Examples source={bad_s} target={bad_t}"
-            )
-        edf["source"] = s_ids.astype(int)
-        edf["target"] = t_ids.astype(int)
-    edf["dist_m"] = pd.to_numeric(edf["dist_m"], errors="coerce").astype(float)
-    edf["dist_m"] = edf["dist_m"].round(decimals=0).astype(int)
+
+    ident_to_vid = {}
+    vid_to_ident = {}
+
+    cur_vid = 0
+
+    sources = []
+    targets = []
+    dist_ms = []
+
+    for i,row in edf.iterrows():
+        source = row["source"].upper().strip()
+        target = row["target"].upper().strip()
+        dist_m = row["dist_m"]
+
+        if source not in ident_to_vid:
+            ident_to_vid[source] = cur_vid
+            cur_vid += 1
+        sources.append(ident_to_vid[source])
+
+        if target not in ident_to_vid:
+            ident_to_vid[target] = cur_vid
+            cur_vid += 1
+        targets.append(ident_to_vid[target])
+        dist_ms.append(dist_m)
+
+    edf["source"] = sources
+    edf["target"] = targets
+    edf["dist_m"] = dist_ms
 
     # sectors
     spath = nav_dir / "sectors.csv"
@@ -159,18 +166,26 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     sdf = pd.read_csv(spath)
     if not {"Sector_ID","Capacity"}.issubset(set(sdf.columns)):
         raise ValueError("sectors.csv must have columns Sector_ID,Capacity")
-    # Map Sector_ID (string IDENTIFIER?) → vertex id if needed
-    s_ints, s_isnum = _safe_int_series(sdf["Sector_ID"])
-    if s_isnum.all():
-        sdf["Sector_ID"] = s_ints
-    else:
-        # expect IDENTIFIER strings
-        sid = sdf["Sector_ID"].astype(str).str.strip().str.upper()
-        try:
-            sdf["Sector_ID"] = sid.map(lambda x: ident_to_vid[x])
-        except KeyError as e:
-            raise KeyError(f"Unknown Sector_ID '{e.args[0]}' not found in vertices.csv") from e
-    sdf["Capacity"] = pd.to_numeric(sdf["Capacity"], errors="raise").astype(int)
+    
+    parsed_sector_ids = {}
+    data_df = []
+    for i, row in sdf.iterrows():
+
+        sector_id = row["Sector_ID"]
+        capacity = row["Capacity"]
+
+        if sector_id not in ident_to_vid:
+            print(f"[WARNING][sectors.csv] - {sector_id} not found")
+
+        if sector_id not in parsed_sector_ids:
+            parsed_sector_ids[sector_id] = True
+        else:
+            print("[WARNING][sectors.csv] - {sector_id} found multiple times - ignoring")
+            continue
+
+        data_df.append([ident_to_vid[sector_id],capacity])
+
+    sdf = pd.DataFrame(data_df, columns=["Sector_ID","Capacity"])
     sdf = sdf[["Sector_ID","Capacity"]].sort_values("Sector_ID")
 
     # navaid → sector (atomic)
@@ -218,32 +233,37 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
 
 
 
-    colN, colS = "Navaid_ID", "Sector_ID"
+    sector_name_to_int = {}
+    parsed_navaid_ids = {}
+    
+    data_df = []
+    for i,row in nsdf.iterrows():
 
-    # 1) Normalize/map Navaid_IDs
-    nsdf[colN] = (nsdf[colN].astype(str)
-                            .str.strip()
-                            .str.upper()
-                            .map(ident_to_vid))
+        sector_id = row["Sector_ID"]
+        navaid_id = row["Navaid_ID"]
+        
+        if navaid_id not in ident_to_vid:
+            continue
 
-    # 2) Identify which Sector_ID entries are numeric
-    is_numeric_sector = pd.to_numeric(nsdf[colS], errors="coerce").notna()
+        if navaid_id not in parsed_navaid_ids:
+            parsed_navaid_ids[navaid_id] = True
+        else:
+            print("[WARNING][navaid_sector_time_assignment] - {navaid_id} found multiple times - ignoring")
+            continue
 
-    # 3) Build the label -> navaid mapping from NON-numeric Sector_ID rows
-    #    keep='last' matches the loop's "last write wins" behavior
-    label_to_navaid = (nsdf.loc[~is_numeric_sector, [colS, colN]]
-                         .dropna(subset=[colS])
-                         .drop_duplicates(subset=[colS], keep='first')
-                         .set_index(colS)[colN])
+        navaid_int = ident_to_vid[navaid_id]
 
-    # 4) Replace all label occurrences in one shot
-    nsdf[colS] = nsdf[colS].replace(label_to_navaid)
+        if sector_id not in sector_name_to_int:
+            # There must be one navaid with the same ID in the sector
+            sector_name_to_int[sector_id] = navaid_int
 
-    # 5) Original validation + sort
-    if (nsdf[colS] == "").any():
-        raise ValueError("navaid_sector_assignment.csv contains empty Sector_ID values.")
+        sector_int = sector_name_to_int[sector_id]
 
-    nsdf = nsdf[[colN, colS]].sort_values([colN, colS], kind="mergesort")
+        data_df.append([navaid_int, sector_int])
+
+    nsdf = pd.DataFrame(data_df, columns=["Navaid_ID","Sector_ID"])
+
+    nsdf = nsdf[["Navaid_ID", "Sector_ID"]].sort_values(["Navaid_ID", "Sector_ID"], kind="mergesort")
 
     # airports list
     ap_path = nav_dir / "airports.csv"
