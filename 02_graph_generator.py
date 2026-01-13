@@ -49,6 +49,7 @@ Optional:
 
 from __future__ import annotations
 import argparse
+import ast
 import csv
 import json
 import math
@@ -120,6 +121,54 @@ def to_altitude_m(alt_value: float, unit: str) -> float:
     if unit == "m":
         return float(alt_value)
     raise ValueError("Invalid --altitude-unit: use 'm' or 'fl'")
+
+def parse_altitude_spec(spec) -> List[float]:
+    """
+    Supports:
+      --altitude 350
+      --altitude 330,350,370
+      --altitude "[330,350,370]"
+      --altitude "(330 350 370)"   (spaces ok)
+    Returns a list[float]. Empty -> [].
+    """
+    print(spec)
+    if spec is None:
+        return []
+    if isinstance(spec, (int, float)):
+        return [float(spec)]
+    s = str(spec).strip()
+    if not s:
+        return []
+
+    # Try Python literal list/tuple first (safe via ast.literal_eval)
+    try:
+        if (s.startswith("[") and s.endswith("]")) or (s.startswith("(") and s.endswith(")")):
+            v = ast.literal_eval(s)
+            if isinstance(v, (list, tuple)):
+                return [float(x) for x in v]
+            return [float(v)]
+    except Exception:
+        pass
+
+    # Fallback: split by common separators
+    s2 = s.strip("[]()")
+    toks = re.split(r"[,\s;]+", s2)
+    out = []
+    for t in toks:
+        tt = t.strip()
+        if not tt:
+            continue
+        out.append(float(tt))
+    return out
+
+def altitude_layer_tag(value_raw: float, unit: str) -> str:
+    unit = (unit or "m").lower()
+    if unit == "fl":
+        return f"FL{int(round(float(value_raw))):03d}"
+    # meters (or anything treated as meters)
+    # keep tag compact but stable
+    return f"ALT{int(round(float(value_raw)))}"
+
 
 
 def chord_distance_3d_m(lat1, lon1, alt1, lat2, lon2, alt2) -> float:
@@ -566,8 +615,8 @@ def build_vertices(
     ap = load_ourairports_df(airports_csv, icao_only=icao_only)
 
     ap = ap.rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
-    # In grid mode: airports at FL0 (0m). Otherwise: keep legacy uniform-altitude behavior.
-    ap["ALTITUDE"] = 0.0 if grid_only else float(altitude_m)
+    # Airports are ALWAYS at FL0 (0 m) in multi-level model as well as legacy model.
+    ap["ALTITUDE"] = 0.0
     ap["IS_AIRPORT"] = 1
 
     # Optional: hard inclusion list for airports (ICAO codes)
@@ -769,6 +818,10 @@ def build_edges_rng_or_gabriel(
         last_print = time()
         print(f"Edge test ({criterion}) over {Npairs:,} candidate pairs...")
 
+    if criterion == "rng":
+        return pair_list
+    # Else: Condition Gabriel
+
     for k, (i, j, dij) in enumerate(it):
         # neighbors with dist < dij (strict)
         ni = nbr_idx[i]
@@ -788,27 +841,21 @@ def build_edges_rng_or_gabriel(
             keep.append((i,j,dij))
             continue
 
-        if criterion == "rng":
-            # by construction, all candidates already satisfy d(i,c) < dij and d(j,c) < dij
-            # RNG condition met -> the pair (i,j) should be **removed** if ANY such c exists
-            # since cand.size>0, we skip adding this edge
-            continue
-        else:
-            # Gabriel: need to check stricter disk condition
-            # Gather distances d(i,c) and d(j,c) for cand
-            # Map cand -> indices in ni/nj
-            # Efficient approach: build dict from neighbor id -> distance for i & j
-            di_map = {int(ni_t): float(di_t) for ni_t, di_t in zip(ni, di)}
-            dj_map = {int(nj_t): float(dj_t) for nj_t, dj_t in zip(nj, dj)}
-            dij2 = dij * dij
-            blocked = False
-            for c in cand:
-                dic = di_map[int(c)]; djc = dj_map[int(c)]
-                if (dic*dic + djc*djc) < dij2:
-                    blocked = True
-                    break
-            if not blocked:
-                keep.append((i,j,dij))
+        # Gabriel: need to check stricter disk condition
+        # Gather distances d(i,c) and d(j,c) for cand
+        # Map cand -> indices in ni/nj
+        # Efficient approach: build dict from neighbor id -> distance for i & j
+        di_map = {int(ni_t): float(di_t) for ni_t, di_t in zip(ni, di)}
+        dj_map = {int(nj_t): float(dj_t) for nj_t, dj_t in zip(nj, dj)}
+        dij2 = dij * dij
+        blocked = False
+        for c in cand:
+            dic = di_map[int(c)]; djc = dj_map[int(c)]
+            if (dic*dic + djc*djc) < dij2:
+                blocked = True
+                break
+        if not blocked:
+            keep.append((i,j,dij))
 
         if (not use_bar) and (time() - last_print > progress_interval_s):
             pct = (k+1) * 100.0 / Npairs if Npairs else 100.0
@@ -842,6 +889,131 @@ def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path, idents: Li
             if j < i:
                 i,j = j,i
             w.writerow([idents[i], idents[j], f"{d:.3f}"])
+
+ 
+def expand_vertices_with_flight_levels(
+    vertices_base: pd.DataFrame,
+    level_values_raw: List[float],
+    level_values_m: List[float],
+    altitude_unit: str,
+) -> Tuple[pd.DataFrame, Dict[Tuple[int,int], int]]:
+    """
+    Airports remain single-layer (LEVEL_IDX=-1). Navpoints are duplicated per level (LEVEL_IDX=0..L-1).
+    IDENTIFIER for navpoints gets suffixed with _FLxxx (or _ALTxxxx).
+
+    Returns:
+      vertices_layered: DataFrame with standard columns (IDENTIFIER,LAT,LON,ALTITUDE,IS_AIRPORT)
+      idx_map: mapping (base_idx, level_idx) -> layered_idx. For airports: level_idx=-1.
+    """
+    if len(level_values_raw) != len(level_values_m):
+        raise ValueError("level_values_raw and level_values_m must have same length")
+    if not level_values_raw:
+        raise ValueError("At least one flight level must be provided")
+
+    vb = vertices_base.copy()
+    vb = vb.reset_index(drop=True)
+    ap_mask = vb["IS_AIRPORT"].astype(int) == 1
+    nav_mask = vb["IS_AIRPORT"].astype(int) == 0
+
+    ap = vb[ap_mask].copy()
+    ap["_BASE_IDX"] = ap.index.astype(int)
+    ap["_LEVEL_IDX"] = -1
+    ap["ALTITUDE"] = 0.0
+
+    nav = vb[nav_mask].copy()
+    nav_layers = []
+    for lvl_idx, (raw, alt_m) in enumerate(zip(level_values_raw, level_values_m)):
+        t = nav.copy()
+        t["_BASE_IDX"] = t.index.astype(int)
+        t["_LEVEL_IDX"] = int(lvl_idx)
+        t["ALTITUDE"] = float(alt_m)
+        tag = altitude_layer_tag(raw, altitude_unit)
+        t["IDENTIFIER"] = t["IDENTIFIER"].astype(str) + "_" + tag
+        nav_layers.append(t)
+
+    allv = pd.concat([ap] + nav_layers, ignore_index=True)
+    allv.reset_index(drop=True, inplace=True)
+
+    idx_map: Dict[Tuple[int,int], int] = {}
+    for new_idx, (b, l) in enumerate(zip(allv["_BASE_IDX"].to_numpy(), allv["_LEVEL_IDX"].to_numpy())):
+        idx_map[(int(b), int(l))] = int(new_idx)
+
+    return allv[["IDENTIFIER","LAT","LON","ALTITUDE","IS_AIRPORT"]].copy(), idx_map
+
+def lift_edges_from_base(
+    vertices_base: pd.DataFrame,
+    vertices_layered: pd.DataFrame,
+    idx_map: Dict[Tuple[int,int], int],
+    edges_base: List[Tuple[int,int,float]],
+    n_levels: int,
+) -> List[Tuple[int,int,float]]:
+    """
+    Lift edges from base graph to multi-flight-level graph:
+      - airport -- navpoint: connect airport to navpoint copies on ALL flight levels
+      - navpoint -- navpoint: for each level k of endpoint i, connect to endpoint j on levels k-1,k,k+1 (within bounds)
+      - airport -- airport: keep single edge
+    No vertical edges between the same base navpoint across levels (not generated here).
+    Distances are recomputed using chord_distance_3d_m on the layered vertices.
+    """
+    vb = vertices_base.reset_index(drop=True)
+    lat = vertices_layered["LAT"].to_numpy(dtype=float)
+    lon = vertices_layered["LON"].to_numpy(dtype=float)
+    alt = vertices_layered["ALTITUDE"].to_numpy(dtype=float)
+
+    def nbr_levels(k: int) -> List[int]:
+        out = [k]
+        if k - 1 >= 0:
+            out.append(k - 1)
+        if k + 1 < n_levels:
+            out.append(k + 1)
+        return out
+
+    seen = set()
+    out: List[Tuple[int,int,float]] = []
+
+    for (i, j, _dref) in edges_base:
+        i = int(i); j = int(j)
+        is_ai = int(vb.loc[i, "IS_AIRPORT"]) == 1
+        is_aj = int(vb.loc[j, "IS_AIRPORT"]) == 1
+
+        if is_ai and is_aj:
+            ui = idx_map[(i, -1)]
+            vj = idx_map[(j, -1)]
+            u, v = (ui, vj) if ui < vj else (vj, ui)
+            if (u, v) in seen:
+                continue
+            d = chord_distance_3d_m(lat[u], lon[u], alt[u], lat[v], lon[v], alt[v])
+            out.append((u, v, float(d)))
+            seen.add((u, v))
+            continue
+
+        if is_ai ^ is_aj:
+            a_base = i if is_ai else j
+            n_base = j if is_ai else i
+            a_idx = idx_map[(a_base, -1)]
+            for k in range(n_levels):
+                n_idx = idx_map[(n_base, k)]
+                u, v = (a_idx, n_idx) if a_idx < n_idx else (n_idx, a_idx)
+                if (u, v) in seen:
+                    continue
+                d = chord_distance_3d_m(lat[u], lon[u], alt[u], lat[v], lon[v], alt[v])
+                out.append((u, v, float(d)))
+                seen.add((u, v))
+            continue
+
+        # navpoint-navpoint
+        for k in range(n_levels):
+            ui = idx_map[(i, k)]
+            for kk in nbr_levels(k):
+                vj = idx_map[(j, kk)]
+                u, v = (ui, vj) if ui < vj else (vj, ui)
+                if (u, v) in seen:
+                    continue
+                d = chord_distance_3d_m(lat[u], lon[u], alt[u], lat[v], lon[v], alt[v])
+                out.append((u, v, float(d)))
+                seen.add((u, v))
+
+    return out
 
 # -------------------------
 # Connectivity enforcement
@@ -1003,7 +1175,7 @@ def parse_args() -> argparse.Namespace:
         if v in ("n","no","false","0","off"): return False
         raise argparse.ArgumentTypeError(f"Invalid bool: {v}")
 
-    p = argparse.ArgumentParser(description="Build Voronoi-style navpoint graph (RNG/Gabriel) with region filtering.")
+    p = argparse.ArgumentParser(description="Build Voronoi-style navpoint graph with region filtering.")
     p.add_argument("--config", type=Path, default=None, help="JSON with considered_geographic_regions polygons (same as model builder).")
     p.add_argument("--ourairports", type=Path, default=Path("./ourairports/airports.csv"), help="OurAirports airports.csv")
     p.add_argument("--navdir", type=Path, default=Path("./test_navpoints"), help="Folder containing fix.dat and nav.dat")
@@ -1028,8 +1200,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--flat-out", action="store_true",
                    help="Write files directly into --out-dir (disable auto-named subfolder).")
     # Altitude control (uniform for all vertices)
-    p.add_argument("--altitude", type=float, default=0.0,
-                   help="Uniform altitude value for ALL vertices (default 0). Interpreted via --altitude-unit.")
+    p.add_argument("--altitude", type=str, default="0",
+                    help="Altitude specification. Either a scalar (e.g., 350) or a list "
+                         "(e.g., '[330,350,370]' or '330,350,370'). Interpreted via --altitude-unit.")
     p.add_argument("--altitude-unit", type=str, default="m", choices=["m","fl"],
                    help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
 
@@ -1132,19 +1305,28 @@ def main():
 
     # 3) Build vertices (airports + navpoints OR airports + grid-navpoints) with region filtering
     print(f"[3/6] Loading airports and navpoints...")
-    altitude_m = to_altitude_m(args.altitude, args.altitude_unit)
-    print(f"{altitude_m} = {args.altitude} --> {args.altitude_unit}")
+    alt_values_raw = parse_altitude_spec(args.altitude)
+    if not alt_values_raw:
+     alt_values_raw = [0.0]
+    # Sort levels by actual altitude (ascending), remove duplicates
+    alt_values_raw = sorted({float(x) for x in alt_values_raw})
+    alt_values_m = [to_altitude_m(v, args.altitude_unit) for v in alt_values_raw]
+    n_levels = len(alt_values_raw)
+    ref_alt_m = float(np.mean(alt_values_m)) if alt_values_m else 0.0
+    print(f"[altitude] levels_raw={alt_values_raw} unit={args.altitude_unit} -> meters={alt_values_m} (ref={ref_alt_m:.3f} m)")
 
     if airport_include:
         print(f"[3/6] Airport include-list enabled: {len(airport_include)} ICAO(s)")
 
-    vertices = build_vertices(
+    # Build a BASE vertex set (single navpoint layer) used for base-edge computation.
+    # Airports are always at altitude 0 in build_vertices.
+    vertices_base = build_vertices(
         airports_csv=args.ourairports,
         nav_dir=args.navdir,
         regions=regions,
         icao_only=args.icao_only,
         od_filter=od_df if not od_df.empty else None,
-        altitude_m = altitude_m,
+        altitude_m = ref_alt_m,
         airport_include = airport_include,
         grid_only=bool(grid_enabled),
         grid_nx=int(args.grid_nx) if grid_enabled else 0,
@@ -1155,38 +1337,34 @@ def main():
         region_filter_use_bbox=(region_filter_use_bbox if grid_enabled else False),
         region_bboxes=(region_bboxes if grid_enabled else None),
     )
-    N = len(vertices)
-    if N == 0:
+    N_base = len(vertices_base)
+    if N_base == 0:
         raise RuntimeError("No vertices after filtering. Check inputs/regions.")
-    print(f"      Kept {N:,} vertices.")
+    print(f"      Kept {N_base:,} base vertices.")
 
-    # 4) Save vertices.csv
-    write_vertices_csv(vertices, exp_dir)
-    print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
- 
-    latlonalt = vertices[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
+    latlonalt_base = vertices_base[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
 
     if grid_enabled:
         # Grid override: enforce local 8-neighborhood connectivity between grid points only.
         # Airports remain in vertices.csv but are excluded from grid adjacency edges.
         print("[5/6] Grid mode enabled: building 8-neighborhood edges between grid navpoints (no RNG/Gabriel).")
-        edges_kept = build_grid_edges_8nb(vertices)
-        print(f"      Kept edges (grid 8-neighborhood): {len(edges_kept):,}")
+        edges_base = build_grid_edges_8nb(vertices_base)
+        print(f"      Kept edges (grid 8-neighborhood): {len(edges_base):,}")
 
         # Attach airports to closest navpoints (to avoid detached airport components)
         ap_attach = build_airport_to_nav_edges(
-            vertices,
+            vertices_base,
             k_nearest=4,
             max_edge_m=float(args.max_edge_km) * 1000.0,
         )
         if ap_attach:
-            seen = {(min(i, j), max(i, j)) for (i, j, _) in edges_kept}
+            seen = {(min(i, j), max(i, j)) for (i, j, _) in edges_base}
             added = 0
             for (i, j, d) in ap_attach:
                 u, v = (i, j) if i < j else (j, i)
                 if (u, v) in seen:
                     continue
-                edges_kept.append((u, v, float(d)))
+                edges_base.append((u, v, float(d)))
                 seen.add((u, v))
                 added += 1
             print(f"      Added airport attachment edges: {added:,}")
@@ -1196,34 +1374,34 @@ def main():
         # 5) Neighbor search (pre-candidate edges within max distance) with index
         print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
         nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
-            latlonalt, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
+            latlonalt_base, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
         )
         print(f"      Candidate pairs: {len(pair_list):,}")
 
         # 6) Edge test (RNG / Gabriel)
         print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
-        edges_kept = build_edges_rng_or_gabriel(
-            latlon=latlonalt,
+        edges_base = build_edges_rng_or_gabriel(
+            latlon=latlonalt_base,
             nbr_idx=nbr_idx,
             nbr_dst=nbr_dst,
             pair_list=pair_list,
             criterion=args.criterion.lower(),
             progress_interval_s=int(args.progress_interval),
         )
-        print(f"      Kept edges: {len(edges_kept):,}")
+        print(f"      Kept edges: {len(edges_base):,}")
  
 
     # 7) Enforce connectivity (optional, default on)
     if do_connect and (not grid_enabled):
         print("[7/7] Enforcing connectivity...")
-        edges_kept, n_added = ensure_connected(
-            latlonalt=latlonalt,
-            edges_kept=edges_kept,
+        edges_base, n_added = ensure_connected(
+            latlonalt=latlonalt_base,
+            edges_kept=edges_base,
             k_centroid_nn=int(args.centroid_knn),
             method=args.connectivity_method.lower(),
         )
         # quick report
-        G_final = _graph_from_edges(len(vertices), edges_kept)
+        G_final = _graph_from_edges(len(vertices_base), edges_base)
         k_final = nx.number_connected_components(G_final)
         print(f"      Components after: {k_final} (added {n_added} bridging edge(s))")
     else:
@@ -1231,6 +1409,27 @@ def main():
             print("[7/7] Skipped connectivity enforcement in grid mode (grid is already connected by construction).")
         else:
             print("[7/7] Skipped connectivity enforcement by user request.")
+
+    # --- Multi-flight-level expansion + edge lifting ---
+
+    vertices, idx_map = expand_vertices_with_flight_levels(
+        vertices_base,
+        level_values_raw=alt_values_raw,
+        level_values_m=alt_values_m,
+        altitude_unit=args.altitude_unit,
+    )
+    edges_kept = lift_edges_from_base(
+        vertices_base=vertices_base,
+        vertices_layered=vertices,
+        idx_map=idx_map,
+        edges_base=edges_base,
+        n_levels=n_levels,
+    )
+ 
+    # 4) Save FINAL vertices.csv (layered)
+    write_vertices_csv(vertices, exp_dir)
+    print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
+ 
 
 
     # Write edges.csv (using IDENTIFIER names instead of numeric indices)
@@ -1242,10 +1441,14 @@ def main():
         payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
         payload["resolved_out_dir"] = str(exp_dir.resolve())
         payload["stats"] = {
-            "num_vertices": int(N),
+            "num_vertices_base": int(N_base),
+            "num_vertices_layered": int(len(vertices)),
             "num_edges_written": int(len(edges_kept)),
             "enforce_connected": bool(do_connect),
-            "altitude_m": float(altitude_m),
+            "altitude_levels_raw": [float(x) for x in alt_values_raw],
+            "altitude_levels_m": [float(x) for x in alt_values_m],
+            "num_levels": int(n_levels),
+            "altitude_ref_m": float(ref_alt_m),
         }
         with open(exp_dir / "run_config.json", "w") as fh:
             json.dump(payload, fh, indent=2)
