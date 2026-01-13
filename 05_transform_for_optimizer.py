@@ -140,8 +140,8 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     dist_ms = []
 
     for i,row in edf.iterrows():
-        source = row["source"].upper().strip()
-        target = row["target"].upper().strip()
+        source = str(row["source"]).upper().strip()
+        target = str(row["target"]).upper().strip()
         dist_m = row["dist_m"]
 
         if source not in ident_to_vid:
@@ -171,11 +171,12 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     data_df = []
     for i, row in sdf.iterrows():
 
-        sector_id = row["Sector_ID"]
+        sector_id = str(row["Sector_ID"]).upper().strip()
         capacity = row["Capacity"]
 
         if sector_id not in ident_to_vid:
             print(f"[WARNING][sectors.csv] - {sector_id} not found")
+
 
         if sector_id not in parsed_sector_ids:
             parsed_sector_ids[sector_id] = True
@@ -239,8 +240,8 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     data_df = []
     for i,row in nsdf.iterrows():
 
-        sector_id = row["Sector_ID"]
-        navaid_id = row["Navaid_ID"]
+        sector_id = str(row["Sector_ID"]).upper().strip()
+        navaid_id = str(row["Navaid_ID"]).upper().strip()
         
         if navaid_id not in ident_to_vid:
             continue
@@ -279,7 +280,16 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     else:
         # derive from vertices.csv if IS_AIRPORT present
         if "IS_AIRPORT" in vdf.columns:
-            ap_ids = [i for i, flag in enumerate(vdf["IS_AIRPORT"].fillna(0).astype(int).tolist()) if flag]
+            ap_ids = []
+            for i,row in vdf.iterrows():
+                if str(row["IS_AIRPORT"]) == "1":
+                    ident = str(row["IDENTIFIER"]).upper().strip()
+                    if ident in ident_to_vid:
+                        ap_ids.append(ident_to_vid[ident])
+                    else:
+                        print(f"[WARN] - Could not find airport: {ident}")
+
+            #ap_ids = [i for i, flag in enumerate(vdf["IS_AIRPORT"].fillna(0).astype(int).tolist()) if flag]
         else:
             print("[WARN] airports.csv missing and vertices.csv has no IS_AIRPORT — emitting empty airports.csv", file=sys.stderr)
             ap_ids = []
