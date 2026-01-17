@@ -408,10 +408,11 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         json.dump(id_maps, fh, indent=2)
     # full vertex dictionary (id -> IDENTIFIER)
     vmap_df = pd.DataFrame(
-        {"Vertex_ID": list(vid_to_ident.keys()), "IDENTIFIER": [vid_to_ident[i] for i in vid_to_ident.keys()]}
-    ).sort_values("Vertex_ID")
-    _write_csv(vmap_df, maps_dir / "vertex_map.csv")
+        {"IDENTIFIER": list(ident_to_vid.keys()), "VERTEX_ID": [ident_to_vid[i] for i in ident_to_vid.keys()]}
+    ).sort_values("VERTEX_ID")
 
+    _write_csv(vmap_df, maps_dir / "vertex_map.csv")
+    
     # Keep a tiny manifest for traceability
     out_manifest = {
         "source_experiment": str(exp_in.resolve()),
