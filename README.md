@@ -28,6 +28,7 @@
    ```
 
 3. **Download Required Data:**
+   - [OpenSky COVID19 Flight Dataset (cc-by)](https://zenodo.org/records/5815448) →  Place e.g., `flightlist_20190601_20190630.csv` in `./data/`.
    - [OurAirports `airports.csv`](https://ourairports.com/data/airports.csv) → Place in `./ourairports/`.
    - Optionally: `earth_fix.dat` and `earth_nav.dat` from X-Plane → Place in `./test_navpoints/`.
 
