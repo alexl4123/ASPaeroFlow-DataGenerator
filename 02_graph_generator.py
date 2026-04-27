@@ -607,6 +607,7 @@ def build_vertices(
     # If True, region filtering uses bbox(es) instead of polygon ray-cast (useful for grid mode)
     region_filter_use_bbox: bool = False,
     region_bboxes: List[Tuple[float,float,float,float]] | None = None,
+    min_dist_vertices_km = -1,
     ) -> pd.DataFrame:
     """
     Returns a DataFrame with columns: IDENTIFIER, LAT, LON, ALTITUDE (float, meters)
@@ -679,6 +680,39 @@ def build_vertices(
     allv = allv.dropna(subset=["IDENTIFIER","LAT","LON"]).copy()
     allv["IDENTIFIER"] = allv["IDENTIFIER"].astype(str).str.strip().str.upper()
     allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True) 
+
+    if grid_only is False:
+        if min_dist_vertices_km >= 0:
+            from sklearn.neighbors import BallTree
+            # Sort to ensure airports (IS_AIRPORT == 1) are processed first and thus retained
+            allv = allv.sort_values(by="IS_AIRPORT", ascending=False).reset_index(drop=True)
+            allv["LAT"] = allv["LAT"].astype(float)
+            allv["LON"] = allv["LON"].astype(float)
+
+            # BallTree requires coordinates in radians for the Haversine metric
+            coords = np.radians(allv[["LAT", "LON"]].values)
+            earth_radius_km = 6371.0088
+            radius_rad = min_dist_vertices_km / earth_radius_km
+
+            # Build spatial index
+            tree = BallTree(coords, metric="haversine")
+
+            # Query all neighbors within the minimum geodesic distance
+            neighbors_list = tree.query_radius(coords, r=radius_rad)
+
+            # Greedy suppression array
+            keep = np.ones(len(allv), dtype=bool)
+            is_airport_array = allv["IS_AIRPORT"].values == 1
+
+            # Iteratively suppress navpoints that fall within the exclusion radius of retained vertices
+            for i, neighbors in enumerate(neighbors_list):
+                if keep[i]:
+                    for j in neighbors:
+                        if i != j and not is_airport_array[j]:
+                            keep[j] = False
+
+            allv = allv[keep].copy()
+
 
     # Reindex to have stable 0..N-1 ids
     allv.reset_index(drop=True, inplace=True)
@@ -1244,6 +1278,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--altitude", type=str, default="0",
                     help="Altitude specification. Either a scalar (e.g., 350) or a list "
                          "(e.g., '[330,350,370]' or '330,350,370'). Interpreted via --altitude-unit.")
+    p.add_argument("--min-dist-vertices-km", type=float, default=-1,
+                    help="Minimum dist. two navpoint vertices have to be separated (-1 = no min dist).")
     p.add_argument("--altitude-unit", type=str, default="m", choices=["m","fl"],
                    help="Unit for --altitude: meters ('m', default) or flight levels ('fl', e.g., --altitude 350 --altitude-unit fl).")
 
@@ -1377,6 +1413,7 @@ def main():
         grid_region_names=(grid_region_names if grid_enabled else None),
         region_filter_use_bbox=(region_filter_use_bbox if grid_enabled else False),
         region_bboxes=(region_bboxes if grid_enabled else None),
+        min_dist_vertices_km=float(args.min_dist_vertices_km),
     )
     N_base = len(vertices_base)
     if N_base == 0:

@@ -232,6 +232,8 @@ def parse_args() -> argparse.Namespace:
                    help="Optional: include ONLY these airports (ICAO). "
                         "Either a comma/space-separated list like 'LOWW,EDDM' "
                         "or a path to a text/CSV file containing ICAO codes.")
+    p.add_argument("--min-dist-vertices-km", type=float, default=C("min-dist-vertices-km",-1),
+                    help="Minimum dist. two navpoint vertices have to be separated (-1 = no min dist).")
 
     # Sectors (03)
     p.add_argument("--cap-enroute", type=int, default=int(C("cap-enroute", 60)))
@@ -349,6 +351,7 @@ def main():
             "--altitude", str(a.altitude),
             "--altitude-unit", str(a.altitude_unit),
             "--connectivity-method", str(a.connectivity_method),
+            "--min-dist-vertices-km", str(a.min_dist_vertices_km),
             "--flat-out"
         ]
 
