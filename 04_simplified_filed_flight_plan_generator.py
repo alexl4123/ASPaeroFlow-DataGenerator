@@ -143,7 +143,7 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     # Flag obviously non-timestamp junk (helps debugging)
     junk_hint = fdf["departure_time"].str.contains(r"\[RUN\]|Traceback|^raise\b|python ", na=False)
 
-    parsed_ts = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce")
+    parsed_ts = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
     bad = parsed_ts.isna()
 
     if bad.any():
@@ -173,7 +173,7 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     fdf["origin"] = fdf["origin"].astype(str).str.strip().str.upper()
     fdf["destination"] = fdf["destination"].astype(str).str.strip().str.upper()
     # parse ISO time (UTC)
-    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce")
+    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
     if fdf["departure_time"].isna().any():
         raise ValueError("Invalid timestamps in departure_time.")
     return fdf
@@ -401,9 +401,16 @@ def main():
 
             prev_flight = df[df["Flight_ID"] == prev_flight_id]
             cur_flight = df[df["Flight_ID"] == cur_flight_id]
+            
+            if len(prev_flight["Time"]) > 0:
+                prev_flight_max = max(prev_flight["Time"])
+            else:
+                prev_flight_max = 0
 
-            prev_flight_max = max(prev_flight["Time"])
-            cur_flight_min = min(cur_flight["Time"])
+            if len(cur_flight["Time"]) > 0:
+                cur_flight_min = min(cur_flight["Time"])
+            else:
+                cur_flight_min = 1
 
             if prev_flight_max >= cur_flight_min:
                 diff_needed = (prev_flight_max - cur_flight_min) + 1

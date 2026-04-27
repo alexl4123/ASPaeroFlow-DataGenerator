@@ -662,9 +662,8 @@ def build_vertices(
 
     # Merge, preferring airport rows on IDENTIFIER collisions
     allv = pd.concat([ap, nav], ignore_index=True)
-
     allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True)  # airports first
-
+    
     # Important: in non-grid mode, legacy behavior was "uniform altitude for all vertices".
     # In grid mode, we need airports at 0 and navpoints at altitude_m. We already set airports
     # to 0.0 above; grid/navpoints set to altitude_m. Nothing else to do here.
@@ -679,6 +678,7 @@ def build_vertices(
     # Clean NaNs and outliers
     allv = allv.dropna(subset=["IDENTIFIER","LAT","LON"]).copy()
     allv["IDENTIFIER"] = allv["IDENTIFIER"].astype(str).str.strip().str.upper()
+    allv.drop_duplicates(subset=["IDENTIFIER"], keep="first", inplace=True) 
 
     # Reindex to have stable 0..N-1 ids
     allv.reset_index(drop=True, inplace=True)
@@ -1094,71 +1094,112 @@ def ensure_connected(latlonalt: np.ndarray,
          across the two comps (via BallTree).
     Returns: (augmented_edges, num_added)
     """
-    N = latlonalt.shape[0]
-    G = _graph_from_edges(N, edges_kept)
-    _, comps = _component_labels(G)
-    if len(comps) <= 1:
-        return edges_kept, 0
 
-    print(f"[connectivity] Components before: {len(comps)}")
-    C = _centroids(latlonalt[:, :2], comps)
-    C_rad = np.deg2rad(C)
+    if method == "mst" or method == "greedy":
 
-    # Build sparse kNN graph among centroids
-    try:
-        if method == "greedy":
-            raise Exception("Fallback to greedy")
+        N = latlonalt.shape[0]
+        G = _graph_from_edges(N, edges_kept)
+        _, comps = _component_labels(G)
+        if len(comps) <= 1:
+            return edges_kept, 0
 
-        from sklearn.neighbors import BallTree
-        tree = BallTree(C_rad, metric="haversine")
-        k = min(k_centroid_nn+1, len(comps))  # +1 because self is included
-        dist, nbrs = tree.query(C_rad, k=k, return_distance=True)
-        # Build edge list (avoid self, make undirected unique i<j)
-        comp_edges = set()
-        for i in range(len(comps)):
-            for kk in range(1, nbrs.shape[1]):
-                j = int(nbrs[i,kk])
-                if i == j: 
-                    continue
-                u, v = (i,j) if i<j else (j,i)
-                comp_edges.add((u,v))
-        # Assign centroid edge weights by great-circle meters
-        weights = []
-        for (u,v) in comp_edges:
-            d_m = _haversine_rad(C_rad[[u]], C_rad[[v]])[0,0]
-            weights.append((u,v,float(d_m)))
-        H = nx.Graph()
-        H.add_weighted_edges_from(weights, weight="w")
-        T = nx.minimum_spanning_tree(H, weight="w")
-        comp_pairs = list(T.edges())
-    except Exception:
-        # Fallback: greedy chain by nearest centroid (may be slower/different)
-        D = _haversine_rad(C_rad, C_rad)
-        np.fill_diagonal(D, np.inf)
-        parent = list(range(len(comps)))
-        def find(x):
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-        comp_pairs = []
-        # Greedy: repeatedly link closest pair of current trees
-        while len({find(i) for i in range(len(comps))}) > 1:
-            u, v = np.unravel_index(np.argmin(D), D.shape)
-            if find(u) != find(v):
-                parent[find(u)] = find(v)
-                comp_pairs.append((u,v))
-            D[u,v] = D[v,u] = np.inf
+        print(f"[connectivity] Components before: {len(comps)}")
+        C = _centroids(latlonalt[:, :2], comps)
+        C_rad = np.deg2rad(C)
 
-    # For each component pair, add the actual closest vertex pair
-    added = []
-    for (cu, cv) in comp_pairs:
-        ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlonalt)
-        added.append((int(ia), int(ib), float(dm)))
+        # Build sparse kNN graph among centroids
+        try:
+            if method == "greedy":
+                raise Exception("Fallback to greedy")
+     
+            from sklearn.neighbors import BallTree
+            tree = BallTree(C_rad, metric="haversine")
+            k = min(k_centroid_nn+1, len(comps))  # +1 because self is included
+            dist, nbrs = tree.query(C_rad, k=k, return_distance=True)
+            # Build edge list (avoid self, make undirected unique i<j)
+            comp_edges = set()
+            for i in range(len(comps)):
+                for kk in range(1, nbrs.shape[1]):
+                    j = int(nbrs[i,kk])
+                    if i == j: 
+                        continue
+                    u, v = (i,j) if i<j else (j,i)
+                    comp_edges.add((u,v))
+            # Assign centroid edge weights by great-circle meters
+            weights = []
+            for (u,v) in comp_edges:
+                d_m = _haversine_rad(C_rad[[u]], C_rad[[v]])[0,0]
+                weights.append((u,v,float(d_m)))
+            H = nx.Graph()
+            H.add_weighted_edges_from(weights, weight="w")
+            T = nx.minimum_spanning_tree(H, weight="w")
+            comp_pairs = list(T.edges())
+        except Exception:
+            # Fallback: greedy chain by nearest centroid (may be slower/different)
+            D = _haversine_rad(C_rad, C_rad)
+            np.fill_diagonal(D, np.inf)
+            parent = list(range(len(comps)))
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+            comp_pairs = []
+            # Greedy: repeatedly link closest pair of current trees
+            while len({find(i) for i in range(len(comps))}) > 1:
+                u, v = np.unravel_index(np.argmin(D), D.shape)
+                if find(u) != find(v):
+                    parent[find(u)] = find(v)
+                    comp_pairs.append((u,v))
+                D[u,v] = D[v,u] = np.inf
 
-    print(f"[connectivity] Adding {len(added)} bridging edge(s) to enforce a single connected graph.")
-    out_edges = list(edges_kept) + added
+        # For each component pair, add the actual closest vertex pair
+        added = []
+        for (cu, cv) in comp_pairs:
+            ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlonalt)
+            added.append((int(ia), int(ib), float(dm)))
 
+
+    elif method == "closest":
+        
+        added = []
+
+        N = latlonalt.shape[0]
+        G = _graph_from_edges(N, edges_kept)
+        _, comps = _component_labels(G)
+
+        if len(comps) <= 1:
+            return edges_kept, 0
+
+        out_edges = edges_kept
+
+        while len(comps) > 1:
+            
+            source = 0
+
+            tmp_dm_min = -1
+            tmp_ia_min = -1
+            tmp_ib_min = -1
+
+            for target in range(1, len(comps)):
+
+                ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[source]), np.asarray(comps[target]), latlonalt)
+
+                if tmp_ib_min == -1:
+                    tmp_dm_min = dm
+                    tmp_ia_min = ia
+                    tmp_ib_min = ib
+                elif tmp_ib_min > dm:
+                    tmp_dm_min = dm
+                    tmp_ia_min = ia
+                    tmp_ib_min = ib
+                
+            print(f"[connectivity] Added ({tmp_ia_min},{tmp_ib_min},{tmp_dm_min}) --- before comp: {len(comps)}.")
+            new_edge = ((int(tmp_ia_min), int(tmp_ib_min), float(tmp_dm_min)))
+            out_edges = list(out_edges) + [new_edge]
+            added.append(new_edge)
+            G = _graph_from_edges(N, out_edges)
+            _, comps = _component_labels(G)
 
     return out_edges, len(added)
 
@@ -1194,7 +1235,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--progress-interval", type=int, default=5, help="Seconds between ETA prints when tqdm is unavailable.")
     p.add_argument("--enforce-connected", type=str, default="true",
                    help="Ensure the final graph is a single connected component (default true).")
-    p.add_argument("--connectivity-method", type=str, default="mst", choices=["mst","greedy"],
+    p.add_argument("--connectivity-method", type=str, default="mst", choices=["mst","greedy","closest"],
                    help="How to choose bridging component pairs (default mst).")
     p.add_argument("--centroid-knn", type=int, default=12, help="k for centroid kNN (default 12).")
     p.add_argument("--flat-out", action="store_true",

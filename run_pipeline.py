@@ -180,6 +180,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target-day", type=str, default=C("target-day", None))
     p.add_argument("--date-start", type=str, default=C("date-start", None))
     p.add_argument("--date-end",   type=str, default=C("date-end",   None))
+    p.add_argument("--timezone",   type=str, default=C("timezone",   "0"))
     p.add_argument("--model-chunksize", type=int, default=int(C("model-chunksize", 250_000)))
     p.add_argument("--seed", type=int, default=int(C("seed", 42)))
 
@@ -199,8 +200,10 @@ def parse_args() -> argparse.Namespace:
 
     # Navgraph (02)
     p.add_argument("--navdir", type=Path, default=Path(C("navdir", "./test_navpoints")))
-    p.add_argument("--criterion", type=str, choices=["rng","gabriel"], default=C("criterion", "rng"))
+    p.add_argument("--criterion", type=str, choices=["rng","gabriel"], default=C("criterion", "gabriel"))
     p.add_argument("--max-edge-km", type=float, default=float(C("max-edge-km", 350.0)))
+    p.add_argument("--connectivity-method", type=str, choices=["mst","greedy","closest"],
+                   help="How to choose bridging component pairs (default mst).", default=C("connectivity-method","closest"))
     p.add_argument("--neighbor-index", type=str, choices=["balltree","bruteforce"], default=C("neighbor_index", "balltree"))
     p.add_argument("--centroid-knn", type=int, default=int(C("centroid-knn", 12)))
     p.add_argument("--enforce-connected", type=str, default=C("enforce-connected", "true"),
@@ -345,6 +348,7 @@ def main():
             "--out-dir", str(nav_dir),
             "--altitude", str(a.altitude),
             "--altitude-unit", str(a.altitude_unit),
+            "--connectivity-method", str(a.connectivity_method),
             "--flat-out"
         ]
 
@@ -456,6 +460,7 @@ def main():
             "--seed", str(first_seed),
             "--out-dir", str(first_ds_dir),
             "--flat-out",
+            "--timezone", str(a.timezone),
         ] + size_arg)
     else:
         print("[SKIP] Generating first dataset")

@@ -121,7 +121,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         raise FileNotFoundError(f"No navgraph directory at {nav_dir}")
     
     # --- read navgraph dictionary & edges
-    vdf, ident_to_vid, vid_to_ident = _read_vertices(nav_dir)
+    vdf, ident_to_vid_2, vid_to_ident_2 = _read_vertices(nav_dir)
 
     epath = nav_dir / "edges.csv"
     if not epath.exists():
@@ -154,6 +154,12 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
             cur_vid += 1
         targets.append(ident_to_vid[target])
         dist_ms.append(dist_m)
+
+    missing_vertices = list(set(ident_to_vid_2.keys()).difference(set(ident_to_vid.keys())))
+    for missing_vertex in missing_vertices:
+        if missing_vertex not in ident_to_vid:
+            ident_to_vid[missing_vertex] = cur_vid
+            cur_vid += 1
 
     edf["source"] = sources
     edf["target"] = targets

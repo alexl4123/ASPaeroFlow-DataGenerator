@@ -158,8 +158,11 @@ def load_global_dest_freq(model_dir: Path) -> pd.Series:
 # Sampling helpers
 # -------------------------
 
-def _sample_time_in_bin(day_str: str, bin_index: int, bin_min: int, rng: np.random.Generator) -> datetime:
-    day0 = datetime.fromisoformat(day_str).replace(tzinfo=timezone.utc)
+def _sample_time_in_bin(day_str: str, bin_index: int, bin_min: int, rng: np.random.Generator, custom_tz) -> datetime:
+
+    custom_tz = timezone(timedelta(hours=custom_tz))
+
+    day0 = datetime.fromisoformat(day_str).replace(tzinfo=custom_tz)
     start = day0 + timedelta(minutes=bin_index * bin_min)
     offs_sec = rng.random() * (bin_min * 60.0)  # uniform within bin
     return start + timedelta(seconds=float(offs_sec))
@@ -233,7 +236,8 @@ def generate_flights(
         scale,
         day_str,
         bin_min,
-        rng):
+        rng,
+        custom_tz):
     
     events = []
 
@@ -242,7 +246,7 @@ def generate_flights(
         k = rng.poisson(lam)  # samples per bin
         for b, kk in enumerate(k):
             for _ in range(int(kk)):
-                events.append((_sample_time_in_bin(day_str, b, bin_min, rng), str(origin)))
+                events.append((_sample_time_in_bin(day_str, b, bin_min, rng, custom_tz), str(origin)))
     return events
 
 
@@ -258,6 +262,7 @@ def generate_synthetic_day(
     dur_dist: np.ndarray,
     glob_spd: np.ndarray,
     bin_min: int,
+    custom_tz: timezone,
     scale: float = 1.0,
     flights: int = -1,
     seed: int | None = 42,
@@ -284,7 +289,7 @@ def generate_synthetic_day(
     if use_exact_number_flights is True:
 
         while len(events) < flights:
-            events += generate_flights(airport_bins, scale, day_str, bin_min, rng)
+            events += generate_flights(airport_bins, scale, day_str, bin_min, rng, custom_tz)
 
 
         to_delete_items = len(events) - flights
@@ -298,7 +303,7 @@ def generate_synthetic_day(
 
     else:
 
-        events = generate_flights(airport_bins, scale, day_str, bin_min)
+        events = generate_flights(airport_bins, scale, day_str, bin_min, custom_tz)
     
     # Sort departures by time to process chaining
     events.sort(key=lambda x: x[0])
@@ -343,7 +348,7 @@ def generate_synthetic_day(
             "aircraft_id": ac_id,
             "origin": origin,
             "destination": dest,
-            "departure_time": dep_time.isoformat().replace("+00:00", "Z"),
+            "departure_time": dep_time.isoformat(),
         })
 
     flights_df = pd.DataFrame(flights)
@@ -367,6 +372,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path, default=Path("./data_out"), help="Default output folder")
     p.add_argument("--flat-out", action="store_true",
                    help="Write files directly into the parent folder of --out (disable auto-named subfolder).")
+    p.add_argument("--timezone", type=str, default="0", help="Timezone (0 is Greenwich).")
 
     return p.parse_args()
 
@@ -395,6 +401,7 @@ def main():
         dur_dist=dur_dist,
         glob_spd=glob_spd,
         bin_min=bin_min,
+        custom_tz = int(args.timezone),
         scale=args.scale,
         flights = args.flights,
         seed=args.seed,
@@ -440,12 +447,13 @@ def main():
     # clean any legacy ".Z" artifacts just in case
     s = s.str.replace(r"\.Z$", "Z", regex=True)
 
-    flights_df["departure_time"] = pd.to_datetime(
-        s, format="ISO8601", utc=True, errors="raise"
-    )
+    # Localize or convert the pandas datetime objects based on the dynamic timezone
+    dt_series = pd.to_datetime(s, format="mixed", errors="raise")
+
+    flights_df["departure_time"] = dt_series.dt.tz_convert(int(args.timezone)) if dt_series.dt.tz is not None else dt_series.dt.tz_localize(custom_tz)
 
     # choose how you want to serialize (seconds precision here)
-    flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%SZ")
+    flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")
 
     aircrafts_path = exp_dir / "aircrafts.csv"
     aircrafts_df.to_csv(aircrafts_path, index=False)
