@@ -131,7 +131,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--date-end",   type=str,
                    default=cfg_get("date-end", None), help="UTC inclusive end date YYYY-MM-DD")
     p.add_argument("--chunksize", type=int, default=int(cfg_get("chunksize", 250_000)))
- 
+    p.add_argument("--timezone",   type=str, default=int(cfg_get("timezone",   0)))
 
     # Model inputs (defaults = original script)
     p.add_argument("--bin-min", type=int, default=int(cfg_get("bin-min", 60)),
@@ -361,6 +361,7 @@ def build_models(
     date_start: str | None,
     date_end: str | None,
     seed: int | None,
+    timezone: int,
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]], np.ndarray, Dict[Tuple[str,str], np.ndarray], pd.Series]:
     rng = np.random.default_rng(seed)
 
@@ -372,6 +373,12 @@ def build_models(
     df["firstseen_dt"] = pd.to_datetime(df["firstseen"], utc=True, errors="coerce")
     df["lastseen_dt"]  = pd.to_datetime(df["lastseen"],  utc=True, errors="coerce")
     df = df.dropna(subset=["firstseen_dt","lastseen_dt","origin","destination"])
+
+    # Format as an ISO 8601 timezone offset string (e.g., "+06:00" or "-04:00")
+    offset_str = f"{'+' if timezone >= 0 else '-'}{abs(timezone):02d}:00"
+    # Convert existing UTC-aware datetimes to the new fixed offset
+    df["firstseen_dt"] = df["firstseen_dt"].dt.tz_convert(offset_str)
+    df["lastseen_dt"] = df["lastseen_dt"].dt.tz_convert(offset_str)
 
     # ICAO filter (A-Z{4})
     if icao_only:
@@ -388,7 +395,7 @@ def build_models(
     n_bins = (24*60) // bin_min
     bin_idx = (minute_of_day // bin_min).clip(0, n_bins-1)
     df["_bin"] = bin_idx
-    df["_date"] = df["firstseen_dt"].dt.floor("D")
+    df["_date"] = df["firstseen_dt"].dt.date
     
     """
     # Per-airport dep counts per bin
@@ -412,9 +419,9 @@ def build_models(
     )
     # 2) build full calendar day index for averaging (inclusive)
     if date_start is not None and date_end is not None:
-        start = pd.to_datetime(date_start, utc=True).normalize()
-        end   = pd.to_datetime(date_end,   utc=True).normalize()
-        all_days = pd.date_range(start=start, end=end, freq="D", tz="UTC")
+        start = pd.to_datetime(date_start).date()
+        end   = pd.to_datetime(date_end).date()
+        all_days = pd.date_range(start=start, end=end, freq="D").date
     else:
         # single-day mode: whatever is present
         all_days = pd.Index(sorted(daily_pivot.index.get_level_values("_date").unique()))
@@ -659,6 +666,7 @@ def main():
         date_start=args.date_start,
         date_end=args.date_end,
         seed=args.seed,
+        timezone=int(args.timezone),
     )
 
     # --- build auto-named experiment directory ---

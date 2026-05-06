@@ -42,6 +42,7 @@ Notes
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 from typing import Dict, Tuple, List
 from math import ceil
@@ -210,7 +211,8 @@ def _start_slot_from_timestamp(ts_utc: pd.Timestamp, time_granularity: int) -> i
     # floor(seconds since UTC midnight / slot_seconds)
     midnight = ts_utc.normalize()  # keeps tz-aware UTC midnight
     seconds = (ts_utc - midnight).total_seconds()
-    return int(np.floor(seconds / _slot_seconds(time_granularity)))
+    return_value = int(np.floor(seconds / _slot_seconds(time_granularity)))
+    return return_value
 
 
 # -------------------------
@@ -238,6 +240,7 @@ def generate_filed_plans(
     flights, aircraft_speed,
     time_granularity: int = 4,
     default_speed_kts: float = 450.0,
+    considered_timespan: int = 24,
 ) -> pd.DataFrame:
     # Load inputs
 
@@ -273,6 +276,8 @@ def generate_filed_plans(
 
     # Slotize departures
     flights["start_slot"] = flights["departure_time"].map(lambda t: _start_slot_from_timestamp(t, time_granularity))
+    
+    print(flights["start_slot"])
 
     # Speed per flight
     def _speed_for(acid: str) -> float:
@@ -309,7 +314,7 @@ def generate_filed_plans(
 
         spd = float(rec.speed_kts)
         start = int(rec.start_slot)
-
+        
         G_spd = speed_graphs[spd]
         try:
             path = nx.shortest_path(G_spd, src, dst, weight="weight")
@@ -319,6 +324,10 @@ def generate_filed_plans(
 
         # Walk the path and accumulate times (exact same update rule as reference)
         t = start
+
+        tmp_rows = []
+        # Implement tmp rows
+        max_t = 0
 
         for hop, node in enumerate(path):
             # Map node to IDENTIFIER string for output
@@ -331,12 +340,27 @@ def generate_filed_plans(
                 pos = str(node).strip().upper()
 
             if hop == 0:
-                rows.append((fid, pos, t))
+                tmp_rows.append((fid,pos,t))
             else:
                 prev = path[hop-1]
                 w = G_spd[prev][node]["weight"]
                 t = t + int(w)
-                rows.append((fid, pos, t))
+                tmp_rows.append((fid,pos,t))
+
+            if t > max_t:
+                max_t = t
+
+        if max_t > time_granularity * considered_timespan:
+            needed_diff = max_t - time_granularity * considered_timespan
+
+            for i in range(len(tmp_rows)):
+                fid,pos,t = tmp_rows[i]
+                tmp_rows[i] = (fid,pos,tmp_rows[i][2] - needed_diff)
+
+
+
+
+        rows += tmp_rows
 
         if (not use_bar) and (time.time() - last_print > 5):
             print(f"  processed {len(rows)} trajectory points so far...")
@@ -364,6 +388,7 @@ def parse_args() -> argparse.Namespace:
                    help="G where 1 slot = 3600/G seconds (default 4 => 15-minute slots).")
     p.add_argument("--default-speed-kts", type=float, default=450.0,
                    help="Fallback speed if aircraft speed missing (knots).")
+    p.add_argument("--considered-timespan", type=int, default=24)
     return p.parse_args()
 
 
@@ -384,7 +409,12 @@ def main():
         flights, aircraft_speed,
         time_granularity = args.time_granularity,
         default_speed_kts=args.default_speed_kts,
+        considered_timespan=args.considered_timespan,
     )
+
+    max_time = args.time_granularity * args.considered_timespan
+
+    new_aircrafts = []
 
     # Handle potential overlapping flights:
     for aircraft in list(set(flights["aircraft_id"])):
@@ -392,6 +422,13 @@ def main():
         if aircraft_flights.shape[0] == 1:
             # If only 1 flight, then there cannot be an issue of overlapping flights
             continue
+
+        print(aircraft)
+
+        new_aircraft_offset = 0
+
+        aircraft_copies = []
+        new_aircraft_flights = []
         
         aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
         for index in range(1,aircraft_flights.shape[0]):
@@ -417,10 +454,41 @@ def main():
                 indices_cur_flight = df.index[df["Flight_ID"] == cur_flight_id].tolist()
                 df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] + diff_needed
 
-        
+                if max(df.loc[indices_cur_flight,"Time"]) > max_time:
 
+                    new_aircraft_id = aircraft + f"_{str(new_aircraft_offset)}"
+                    diff = max(df.loc[indices_cur_flight,"Time"]) - max_time
+
+                    if diff_needed > diff:
+                        diff = diff_needed
+
+                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff
+                    
+                    aircraft_copies.append((aircraft,new_aircraft_id))
+                    new_aircraft_flights.append((new_aircraft_id,cur_flight_id))
+
+                    new_aircraft_offset += 1
+
+        for new_aircraft_id, flight_id in new_aircraft_flights:
+            indices_flights = flights.index[flights["flight_id"]==flight_id]
+            flights.loc[indices_flights,"aircraft_id"] = new_aircraft_id
+
+        for aircraft,new_aircraft_id in aircraft_copies:
+            speed = aircraft_speed[aircraft]
+            aircraft_speed[new_aircraft_id] = speed
+   
     out_path = args.data_dir / "filed_flights.csv"
     df.to_csv(out_path, index=False)
+    
+    out_path = args.data_dir / "flights.csv"
+    flights.to_csv(out_path, index=False)
+
+    out_path = args.data_dir / "aircrafts.csv"
+    with open(out_path, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["aircraft_id", "speed_kts"])
+        writer.writerows(aircraft_speed.items())
+
     print(f"Done. Wrote {len(df):,} trajectory rows to {out_path.resolve()}")
 
 

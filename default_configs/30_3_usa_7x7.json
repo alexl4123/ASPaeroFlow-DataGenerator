@@ -1,0 +1,28 @@
+
+{
+    "experiment-name":"30-3-USA-7x7",
+    "cap-enroute":"1",
+    "convex-sectors": "1",
+    "date-start":"2019-06-01",
+    "date-end":"2019-06-30",
+    "bin-min":"15",
+    "smoothing":"False",
+    "verify-ourairports":"True",
+    "seed":"11904657",
+    "time-granularity":"1",
+    "flight-flights":[10,20,30,40,50,60,70,80,90,100],
+    "flight-seeds":[42,11904657,150699,13],
+    "sector-default-navaid-size":7,
+    "altitude":"300",
+    "altitude-unit":"fl",
+    "considered_geographic_regions": [
+        {
+            "region-name":"USA-EAST-COAST",
+            "polygon":[22.59228, -64.86328, 24.20471, -91.40625, 50.72481, -93.60352, 50.8359, -66.09375]
+        }
+    ],
+    "grid-navpoints":"True",
+    "grid-nx":7,
+    "grid-ny":7,
+    "airport-include":"KORD,KATL,KJFK,KCLT,KSEA,KBOS,KMCO,KPHL,KIAD"
+}

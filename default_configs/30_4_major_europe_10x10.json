@@ -1,0 +1,27 @@
+{
+    "experiment-name":"30-4-MAJOR-EUROPE-10x10",
+    "cap-enroute":"1",
+    "convex-sectors": "1",
+    "date-start":"2019-06-01",
+    "date-end":"2019-06-30",
+    "bin-min":"15",
+    "smoothing":"False",
+    "verify-ourairports":"True",
+    "seed":"11904657",
+    "time-granularity":"1",
+    "flight-flights":[10,20,30,40,50,60,70,80,90,100],
+    "flight-seeds":[42,11904657,150699,13],
+    "sector-default-navaid-size":10,
+    "altitude":"100",
+    "altitude-unit":"fl",
+    "considered_geographic_regions": [
+        {
+            "region-name":"MAJOR-EUROPE",
+            "polygon": [60.87011, 28.06765, 59.02283, -11.93436, 34.94345, -12.28603, 35.58899, 33.51848]
+        }
+    ],
+    "grid-navpoints":"True",
+    "grid-nx":10,
+    "grid-ny":10,
+    "airport-include":"EGLL,LTFM,LFPG,EHAM,LEMD,EDDF,LIRF,LPPT,LOWW,LGAV,EKCH,EPWA,LSZH,ENGM,ESSA,LYBE,LROP"
+}

@@ -1,0 +1,49 @@
+{
+    "experiment-name": "00-0-CENTRAL-EUROPE-7x7-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-1",
+    "cap-enroute": "1200",
+    "convex-sectors": "1",
+    "date-start": "2019-06-01",
+    "timezone": "0",
+    "date-end": "2019-06-30",
+    "bin-min": "15",
+    "smoothing": "False",
+    "verify-ourairports": "True",
+    "seed": "11904657",
+    "time-granularity": "4",
+    "flight-flights": [
+        1000,
+        1778,
+        3162,
+        5623,
+        10000,
+        17782,
+        31622
+    ],
+    "flight-seeds": [
+        42,
+        11904657,
+        150699
+    ],
+    "sector-default-navaid-size": 10,
+    "altitude": "300",
+    "altitude-unit": "fl",
+    "considered_geographic_regions": [
+        {
+            "region-name": "CENTRAL-EUROPE",
+            "polygon": [
+                56.64614,
+                16.24997,
+                45.91336,
+                18.14017,
+                45.32967,
+                1.96354,
+                54.99308,
+                0.46895
+            ]
+        }
+    ],
+    "grid-navpoints": "True",
+    "grid-nx": 7,
+    "grid-ny": 7,
+    "airport-include": "LOWW,EDDB,LFPG,EDDF,LSZH,EHAM,EKCH"
+}

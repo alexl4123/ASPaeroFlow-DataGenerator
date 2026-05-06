@@ -1,0 +1,63 @@
+{
+    "experiment-name": "04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH",
+    "cap-enroute": "1200",
+    "convex-sectors": "0",
+    "date-start": "2019-06-01",
+    "date-end": "2019-06-30",
+    "timezone": "0",
+    "bin-min": "15",
+    "smoothing": "False",
+    "verify-ourairports": "True",
+    "seed": "11904657",
+    "time-granularity": "4",
+    "flight-flights": [
+        1000,
+        1778,
+        3162,
+        5623,
+        10000,
+        17782,
+        31622
+    ],
+    "flight-seeds": [
+        42,
+        11904657,
+        150699
+    ],
+    "sector-default-navaid-size": 50,
+    "altitude": "300",
+    "max-edge-km": "400",
+    "criterion": "gabriel",
+    "min-dist-vertices-km": "10",
+    "connectivity-method": "closest",
+    "altitude-unit": "fl",
+    "considered_geographic_regions": [
+        {
+            "region-name": "DACH",
+            "polygon": [
+                48.81865,
+                7.22029,
+                49.65035,
+                5.33008,
+                53.84768,
+                5.57185,
+                55.31123,
+                7.90164,
+                54.94711,
+                14.16569,
+                50.81624,
+                15.46246,
+                50.48204,
+                13.30851,
+                49.07826,
+                13.79205,
+                49.23625,
+                16.93506,
+                46.93347,
+                18.25381,
+                45.64361,
+                5.72571
+            ]
+        }
+    ]
+}

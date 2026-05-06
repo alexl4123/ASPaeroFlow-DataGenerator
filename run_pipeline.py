@@ -317,6 +317,7 @@ def main():
             "--flat-out",
             "--verify-ourairports", "true",
             "--icao-only", "true",
+            "--timezone", str(a.timezone),
         ]
         if a.config:      cmd += ["--config", str(a.config)]
         if a.date_start:  cmd += ["--date-start", a.date_start]

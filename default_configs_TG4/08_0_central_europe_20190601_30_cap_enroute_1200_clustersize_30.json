@@ -1,0 +1,49 @@
+{
+    "experiment-name": "08-0-CENTRAL-EUROPE-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-30",
+    "cap-enroute": "1200",
+    "convex-sectors": "1",
+    "date-start": "2019-06-01",
+    "date-end": "2019-06-30",
+    "timezone": "0",
+    "bin-min": "15",
+    "smoothing": "False",
+    "verify-ourairports": "True",
+    "seed": "11904657",
+    "time-granularity": "4",
+    "flight-flights": [
+        1000,
+        1778,
+        3162,
+        5623,
+        10000,
+        17782,
+        31622
+    ],
+    "flight-seeds": [
+        42,
+        11904657,
+        150699
+    ],
+    "sector-default-navaid-size": 30,
+    "altitude": "0",
+    "altitude-unit": "fl",
+    "max-edge-km": "400",
+    "criterion": "gabriel",
+    "min-dist-vertices-km": "3",
+    "considered_geographic_regions": [
+        {
+            "region-name": "CENTRAL-EUROPE-AUSTRIA",
+            "polygon": [
+                49.23571,
+                17.24199,
+                49.00575,
+                9.24158,
+                46.14748,
+                9.50533,
+                46.57184,
+                17.4398
+            ]
+        }
+    ],
+    "airport-include": "LOWW,LOWI,LOWG,LOWL,LOWS,LOWK,LIPB,EDNY,EDDM,LZIB"
+}

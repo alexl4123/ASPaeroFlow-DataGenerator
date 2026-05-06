@@ -1,0 +1,49 @@
+{
+    "experiment-name": "03-0-EAST-ASIA-40x40-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-16",
+    "cap-enroute": "1200",
+    "convex-sectors": "1",
+    "date-start": "2019-06-01",
+    "date-end": "2019-06-30",
+    "timezone": "8",
+    "bin-min": "15",
+    "smoothing": "False",
+    "verify-ourairports": "True",
+    "seed": "11904657",
+    "time-granularity": "4",
+    "flight-flights": [
+        1000,
+        1778,
+        3162,
+        5623,
+        10000,
+        17782,
+        31622
+    ],
+    "flight-seeds": [
+        42,
+        11904657,
+        150699
+    ],
+    "sector-default-navaid-size": 30,
+    "altitude": "300",
+    "altitude-unit": "fl",
+    "considered_geographic_regions": [
+        {
+            "region-name": "EAST-ASIA",
+            "polygon": [
+                18.97017,
+                146.33789,
+                20.04663,
+                107.8418,
+                44.94784,
+                106.61133,
+                45.75043,
+                142.99805
+            ]
+        }
+    ],
+    "grid-navpoints": "True",
+    "grid-nx": 40,
+    "grid-ny": 40,
+    "airport-include": "RJTT,ZSPD,ZGGG,RKSI,ZBAA,RCTP,RJBB"
+}
