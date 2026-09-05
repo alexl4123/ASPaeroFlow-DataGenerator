@@ -173,8 +173,11 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     fdf = fdf.rename(columns={cmap[n]: n for n in need})
     fdf["origin"] = fdf["origin"].astype(str).str.strip().str.upper()
     fdf["destination"] = fdf["destination"].astype(str).str.strip().str.upper()
-    # parse ISO time (UTC)
-    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
+    # Parse ISO time PRESERVING the written UTC offset. 01_data_generation writes departure
+    # times in the configured local frame (e.g. +08:00); forcing utc=True here re-anchored the
+    # whole 24h simulation window to UTC midnight, so the end-of-window clamp below landed in
+    # the middle of the local day (17.5% of USA flights, 9.7% of EAST-ASIA, 0.1% of DACH).
+    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=False, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
     if fdf["departure_time"].isna().any():
         raise ValueError("Invalid timestamps in departure_time.")
     return fdf
@@ -208,8 +211,10 @@ def _edge_duration_slots(distance_m: float, speed_kts: float, time_granularity: 
     return max(slots, 1)
 
 def _start_slot_from_timestamp(ts_utc: pd.Timestamp, time_granularity: int) -> int:
-    # floor(seconds since UTC midnight / slot_seconds)
-    midnight = ts_utc.normalize()  # keeps tz-aware UTC midnight
+    # floor(seconds since LOCAL midnight / slot_seconds). ts carries the configured offset, so
+    # normalize() gives midnight in that same frame -- which is what makes slot 0 the start of
+    # the simulated local day.
+    midnight = ts_utc.normalize()
     seconds = (ts_utc - midnight).total_seconds()
     return_value = int(np.floor(seconds / _slot_seconds(time_granularity)))
     return return_value
@@ -372,7 +377,7 @@ def generate_filed_plans(
     out = pd.DataFrame(rows, columns=["Flight_ID","Position","Time"])
     out["Position"] = out["Position"].astype("string")
 
-    return out
+    return out, flights
 
 
 # -------------------------
@@ -404,7 +409,7 @@ def main():
     flights = _load_flights(args.data_dir)
     aircraft_speed = _load_aircrafts(args.data_dir)
 
-    df = generate_filed_plans(
+    df, flights = generate_filed_plans(
         G_base, ident_to_vid, vid_to_ident, nodes_are_int,
         flights, aircraft_speed,
         time_granularity = args.time_granularity,

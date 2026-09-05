@@ -536,7 +536,7 @@ def parse_nav(path: Path) -> pd.DataFrame:
     """
     keep_types = {2,3,12,13}
     rows = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             s = line.strip()
             if not s or s.startswith("99"):
