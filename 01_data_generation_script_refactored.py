@@ -176,6 +176,9 @@ def _pick_dest_time(
     bin_min: int,
     rng: np.random.Generator,
 ) -> str:
+    # dep_time and the od_time_model bin keys are both expressed in the configured local
+    # frame: 00_model_generation_script_refactored.py converts to the fixed offset *before*
+    # binning. Converting to UTC here would mis-index the OD model by -tz bins.
     b = (dep_time.hour * 60 + dep_time.minute) // bin_min
     b = int(max(0, min(b, (24 * 60) // bin_min - 1)))
     tb = od_time_model.get(origin, {})
@@ -187,10 +190,10 @@ def _pick_dest_time(
             dests, probs = tb[b]
             destination = str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
         # Fallbacks: any other bin for this origin, else global
-        if tb:
+        elif tb:
             dests, probs = next(iter(tb.values()))
             destination = str(rng.choice(dests, p=(probs / probs.sum() if probs.sum() > 0 else None)))
-        if not global_dest_freq.empty:
+        elif not global_dest_freq.empty:
             destination =  str(rng.choice(global_dest_freq.index.to_numpy(), p=global_dest_freq.values))
 
         if destination != origin:
@@ -286,6 +289,10 @@ def generate_synthetic_day(
     if airport_bins.shape[1] != n_bins:
         airport_bins = airport_bins.reindex(columns=range(n_bins), fill_value=0.0)
     
+    # NOTE: airport_bins is ALREADY expressed in the configured local frame -- see
+    # 00_model_generation_script_refactored.py, which calls tz_convert(offset) before it
+    # computes the minute-of-day bins. Rolling the bins here by -tz would therefore apply the
+    # same correction a second time and shift the whole diurnal profile by |tz| hours.
     if use_exact_number_flights is True:
 
         while len(events) < flights:
@@ -303,7 +310,9 @@ def generate_synthetic_day(
 
     else:
 
-        events = generate_flights(airport_bins, scale, day_str, bin_min, custom_tz)
+        # NOTE: rng must be passed; omitting it bound custom_tz to the rng parameter and made
+        # every --scale run (i.e. world_20190615.json) fail inside rng.poisson().
+        events = generate_flights(airport_bins, scale, day_str, bin_min, rng, custom_tz)
     
     # Sort departures by time to process chaining
     events.sort(key=lambda x: x[0])
@@ -401,7 +410,7 @@ def main():
         dur_dist=dur_dist,
         glob_spd=glob_spd,
         bin_min=bin_min,
-        custom_tz = int(args.timezone),
+        custom_tz = float(args.timezone),
         scale=args.scale,
         flights = args.flights,
         seed=args.seed,
@@ -450,7 +459,12 @@ def main():
     # Localize or convert the pandas datetime objects based on the dynamic timezone
     dt_series = pd.to_datetime(s, format="mixed", errors="raise")
 
-    flights_df["departure_time"] = dt_series.dt.tz_convert(int(args.timezone)) if dt_series.dt.tz is not None else dt_series.dt.tz_localize(custom_tz)
+    # pandas interprets a bare int as *seconds*, not hours, so build an explicit fixed offset.
+    out_tz = timezone(timedelta(hours=float(args.timezone)))
+    flights_df["departure_time"] = (
+        dt_series.dt.tz_convert(out_tz) if dt_series.dt.tz is not None
+        else dt_series.dt.tz_localize(out_tz)
+    )
 
     # choose how you want to serialize (seconds precision here)
     flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")

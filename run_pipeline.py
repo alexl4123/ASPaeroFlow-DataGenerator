@@ -502,6 +502,10 @@ def main():
                 "--day", sim_day,
                 "--out-dir", str(ds_dir),
                 "--flat-out",
+                # Must match the first dataset above: without this every dataset except the
+                # first was generated in the UTC frame while the first used the config's
+                # timezone, making the datasets of one experiment mutually inconsistent.
+                "--timezone", str(a.timezone),
             ] + size_arg)
         else:
             print(f"[SKIP] Data present for {ds_dir.name}")
