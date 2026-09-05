@@ -311,12 +311,22 @@ def load_filtered(csv_path: Path,
         ):
             first_day = chunk["firstseen"].str.slice(0, 10)
             last_day  = chunk["lastseen"].str.slice(0, 10)
-            same_day = (first_day == last_day)
+            # A flight is selected by the UTC day it *departs* on. We must NOT additionally
+            # require that it also lands on that same UTC day: doing so silently deletes every
+            # flight that crosses UTC midnight, which removes ~95% of the 23:00 UTC departures
+            # and ~50% of the 22:00 UTC ones. Because the timezone conversion happens later
+            # (see build_models), that hole stays anchored to UTC regardless of --timezone, so
+            # it lands in the middle of the local afternoon for e.g. the US (-6) and Asia (+8)
+            # regions while being nearly invisible for Europe. It also biases the duration and
+            # OD distributions towards short-haul and removes all overnight turnarounds.
+            # The only sanity requirement kept here is that the flight does not end before it
+            # begins; duration bounds are enforced downstream via --min-dur / --max-dur.
+            sane = (last_day >= first_day)
             if target_day is not None:
-                mask = same_day & (first_day == target_day)
+                mask = sane & (first_day == target_day)
             else:
                 # range is inclusive on both ends
-                mask = same_day & (first_day >= date_start) & (first_day <= date_end)
+                mask = sane & (first_day >= date_start) & (first_day <= date_end)
 
             if not mask.any():
                 continue
@@ -361,7 +371,7 @@ def build_models(
     date_start: str | None,
     date_end: str | None,
     seed: int | None,
-    timezone: int,
+    timezone: float,
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]], np.ndarray, Dict[Tuple[str,str], np.ndarray], pd.Series]:
     rng = np.random.default_rng(seed)
 
@@ -375,7 +385,11 @@ def build_models(
     df = df.dropna(subset=["firstseen_dt","lastseen_dt","origin","destination"])
 
     # Format as an ISO 8601 timezone offset string (e.g., "+06:00" or "-04:00")
-    offset_str = f"{'+' if timezone >= 0 else '-'}{abs(timezone):02d}:00"
+    # Support fractional offsets (e.g. India is UTC+5:30). Formatting as whole hours silently
+    # rounded half-hour zones to the wrong day boundary.
+    _tz_min = int(round(float(timezone) * 60))
+    _sign = "+" if _tz_min >= 0 else "-"
+    offset_str = f"{_sign}{abs(_tz_min)//60:02d}:{abs(_tz_min)%60:02d}"
     # Convert existing UTC-aware datetimes to the new fixed offset
     df["firstseen_dt"] = df["firstseen_dt"].dt.tz_convert(offset_str)
     df["lastseen_dt"] = df["lastseen_dt"].dt.tz_convert(offset_str)
@@ -384,6 +398,15 @@ def build_models(
     if icao_only:
         pat_icao = r"^[A-Z]{4}$"
         df = df[df["origin"].str.match(pat_icao) & df["destination"].str.match(pat_icao)]
+    # Drop self-loops (origin == destination). These are real -- sightseeing, training and
+    # return-to-base flights, 12.6% of intra-DACH and 14.8% of intra-USA traffic -- but the
+    # benchmark instance is point-to-point over a navgraph and cannot represent them. Keeping
+    # them in od_time_model made _pick_dest_time exhaust its 200 retries and emit
+    # destination == origin anyway. The validation scripts exclude them from the real side for
+    # the same reason, so the modelled population is defined identically on both sides:
+    # intra-region, point-to-point, origin != destination.
+    df = df[df["origin"] != df["destination"]]
+
     # Optional ourairports whitelist filter (applies regardless of icao_only)
     if allowed_icao is not None:
         df = df[df["origin"].isin(allowed_icao) & df["destination"].isin(allowed_icao)]
@@ -666,7 +689,7 @@ def main():
         date_start=args.date_start,
         date_end=args.date_end,
         seed=args.seed,
-        timezone=int(args.timezone),
+        timezone=float(args.timezone),
     )
 
     # --- build auto-named experiment directory ---
