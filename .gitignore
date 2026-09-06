@@ -214,3 +214,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# generated datasets (published via Zenodo, not tracked here)
+unparsed_experiment_data_V2_*/
+experiment_data_V2_*/
