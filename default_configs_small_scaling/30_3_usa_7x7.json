@@ -49,5 +49,5 @@
     "grid-navpoints": "True",
     "grid-nx": 7,
     "grid-ny": 7,
-    "airport-include": "KORD,KATL,KJFK,KCLT,KSEA,KBOS,KMCO,KPHL,KIAD"
+    "airport-include": "KORD,KATL,KJFK,KCLT,KBOS,KMCO,KPHL,KIAD"
 }
