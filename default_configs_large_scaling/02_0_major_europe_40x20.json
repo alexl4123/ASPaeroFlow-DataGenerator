@@ -1,5 +1,5 @@
 {
-    "experiment-name": "08-0-CENTRAL-EUROPE-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-30-V2-TG4",
+    "experiment-name": "02-0-MAJOR-EUROPE-40x20-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-8-V2",
     "cap-enroute": "1200",
     "convex-sectors": "1",
     "date-start": "2019-06-01",
@@ -24,26 +24,26 @@
         11904657,
         150699
     ],
-    "sector-default-navaid-size": 30,
-    "altitude": "0",
+    "sector-default-navaid-size": 80,
+    "altitude": "300",
     "altitude-unit": "fl",
-    "max-edge-km": "400",
-    "criterion": "gabriel",
-    "min-dist-vertices-km": "3",
     "considered_geographic_regions": [
         {
-            "region-name": "CENTRAL-EUROPE-AUSTRIA",
+            "region-name": "MAJOR-EUROPE",
             "polygon": [
-                49.23571,
-                17.24199,
-                49.00575,
-                9.24158,
-                46.14748,
-                9.50533,
-                46.57184,
-                17.4398
+                60.87011,
+                28.06765,
+                59.02283,
+                -11.93436,
+                34.94345,
+                -12.28603,
+                35.58899,
+                33.51848
             ]
         }
     ],
-    "airport-include": "LOWW,LOWI,LOWG,LOWL,LOWS,LOWK,LIPB,EDNY,EDDM,LZIB"
+    "grid-navpoints": "True",
+    "grid-nx": 40,
+    "grid-ny": 20,
+    "airport-include": "EGLL,LTFM,LFPG,EHAM,LEMD,EDDF,LIRF,LPPT,LOWW,LGAV,EKCH,EPWA,LSZH,ENGM,ESSA,LYBE,LROP"
 }
