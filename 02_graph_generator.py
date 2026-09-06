@@ -689,12 +689,33 @@ def build_vertices(
     # Important: in non-grid mode, legacy behavior was "uniform altitude for all vertices".
     # In grid mode, we need airports at 0 and navpoints at altitude_m. We already set airports
     # to 0.0 above; grid/navpoints set to altitude_m. Nothing else to do here.
-    # Region filter
-    if region_filter_use_bbox and region_bboxes:
-        mask = allv.apply(lambda r: in_any_bbox(float(r["LAT"]), float(r["LON"]), region_bboxes), axis=1)
+    # Region filter.
+    #
+    # AIRPORTS are ALWAYS filtered by the region polygon, never by its bounding box, because
+    # 00_model_generation_script_refactored.py filters them by polygon
+    # (filter_icao_by_regions -> _point_in_poly). If the two stages disagree, the navgraph can
+    # contain an airport vertex that the demand model can never use -- as happened for ENGM
+    # (Oslo) in MAJOR-EUROPE, which sits inside the polygon bbox but ~0.1 degrees north of the
+    # polygon edge, so the navgraph kept it while the model dropped it.
+    #
+    # NAVPOINTS keep the --grid-rect-filter behaviour: a grid is generated on a rectangle by
+    # construction, and polygon-filtering it would make the lattice ragged and break the nx*ny
+    # naming convention (INDIA 4x10 would hold 27 navpoints rather than 40). Navpoints do not
+    # appear in the demand model, so this cannot cause a stage disagreement.
+    if regions:
+        is_ap = allv["IS_AIRPORT"] == 1
+        keep_ap = allv[is_ap].apply(
+            lambda r: in_any_region(float(r["LAT"]), float(r["LON"]), regions), axis=1)
+        if region_filter_use_bbox and region_bboxes:
+            keep_nav = allv[~is_ap].apply(
+                lambda r: in_any_bbox(float(r["LAT"]), float(r["LON"]), region_bboxes), axis=1)
+        else:
+            keep_nav = allv[~is_ap].apply(
+                lambda r: in_any_region(float(r["LAT"]), float(r["LON"]), regions), axis=1)
+        mask = pd.concat([keep_ap, keep_nav]).reindex(allv.index).fillna(False)
         allv = allv[mask]
-    elif regions:
-        mask = allv.apply(lambda r: in_any_region(float(r["LAT"]), float(r["LON"]), regions), axis=1)
+    elif region_filter_use_bbox and region_bboxes:
+        mask = allv.apply(lambda r: in_any_bbox(float(r["LAT"]), float(r["LON"]), region_bboxes), axis=1)
         allv = allv[mask]
 
     # Clean NaNs and outliers
