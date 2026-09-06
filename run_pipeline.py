@@ -228,6 +228,10 @@ def parse_args() -> argparse.Namespace:
                    help="Optional explicit bbox for grid generation (overrides config regions).")
     p.add_argument("--grid-rect-filter", type=str, default=C("grid-rect-filter","true"),
                    help="If true and grid mode is enabled, filter vertices by the region bbox (not polygon). Default true.")
+    p.add_argument("--airport-types", type=str, default=C("airport-types", None),
+                   help="Comma-separated OurAirports facility types (e.g. "
+                        "'large_airport,medium_airport'). Forwarded identically to the model "
+                        "and the navgraph so both agree on the airport set. 'all' disables it.")
     p.add_argument("--airport-include", type=str, default=C("airport-include",None),
                    help="Optional: include ONLY these airports (ICAO). "
                         "Either a comma/space-separated list like 'LOWW,EDDM' "
@@ -327,6 +331,8 @@ def main():
             cmd += [
                     "--airport-include", str(a.airport_include)
                     ]
+        if a.airport_types:
+            cmd += ["--airport-types", str(a.airport_types)]
 
         run(cmd)
     else:
@@ -376,6 +382,8 @@ def main():
             cmd += [
                     "--airport-include", str(a.airport_include)
                     ]
+        if a.airport_types:
+            cmd += ["--airport-types", str(a.airport_types)]
 
         if a.config:
             cmd += ["--config", str(a.config)]

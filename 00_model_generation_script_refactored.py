@@ -85,6 +85,16 @@ def parse_airport_include_spec(spec: str | None) -> set[str] | None:
     return set(codes) if codes else None
 
 
+def _parse_airport_types(spec):
+    """None/'all' disables the filter; otherwise a comma/space-separated type list."""
+    if spec is None:
+        return None
+    t = str(spec).strip().lower()
+    if not t or t in ("all", "any", "*"):
+        return None
+    return [x for x in re.split(r"[,\s;]+", t) if x]
+
+
 # -------------------------
 # CLI
 # -------------------------
@@ -160,6 +170,8 @@ def parse_args() -> argparse.Namespace:
                     help="Optional: include ONLY these airports (ICAO) in the model. "
                          "Either a comma/space-separated list like 'LOWW,EDDM' "
                          "or a path to a text/CSV file containing ICAO codes.")
+    p.add_argument("--airport-types", type=str, default=cfg_get("airport-types", "large_airport,medium_airport,small_airport"),
+                    help="Comma-separated OurAirports facility types to include, e.g. 'large_airport,medium_airport'. Default excludes heliports, seaplane bases and closed fields. Set to 'all' to disable the filter.")
     p.add_argument("--min-samples-per-od", type=int, default=int(cfg_get("min-samples-per-od", 1)),
                     help="Minimum samples for OD-specific durations")
     p.add_argument("--seed", type=int, default=(cfg_get("seed", None)),
@@ -199,7 +211,7 @@ def _col(df: pd.DataFrame, name: str) -> pd.Series:
     matches = [c for c in df.columns if c.lower() == name]
     return df[matches[0]] if matches else pd.Series(dtype="string")
 
-def load_ourairports_df(path: Path) -> pd.DataFrame:
+def load_ourairports_df(path: Path, airport_types=None) -> pd.DataFrame:
     """
     Load OurAirports CSV and normalize to columns:
       - icao: 4-letter code (from icao_code or ident/gps_code if looks like ICAO)
@@ -218,22 +230,44 @@ def load_ourairports_df(path: Path) -> pd.DataFrame:
     # coordinates (prefer latitude_deg/longitude_deg)
     lat = pd.to_numeric(_col(raw, "latitude_deg"), errors="coerce").rename("lat")
     lon = pd.to_numeric(_col(raw, "longitude_deg"), errors="coerce").rename("lon")
-    # Keep one row per airport where possible
-    df = pd.DataFrame({"icao": _col(raw, "icao_code")}).copy()
-    if df["icao"].isna().all():
-        df["icao"] = _col(raw, "ident")
-    if df["icao"].isna().all():
-        df["icao"] = _col(raw, "gps_code")
+    # Keep one row per airport.
+    # NOTE: the fallback below used to be written as `if df["icao"].isna().all()`, i.e. a
+    # whole-COLUMN test. It therefore only fired when *every* row lacked an icao_code, which
+    # never happens (9,677 of 84,638 rows have one). The consequence was that ~9,862 airports
+    # carrying a perfectly good ICAO-shaped `ident` but an empty `icao_code` were silently
+    # discarded -- including 5 large_airport and 35 scheduled-service medium_airport entries.
+    # It must be a per-ROW coalesce.
+    df = pd.DataFrame({"icao": _col(raw, "icao_code")
+                              .fillna(_col(raw, "ident"))
+                              .fillna(_col(raw, "gps_code"))}).copy()
     df["icao"] = df["icao"].astype("string").str.strip().str.upper()
     df["lat"] = lat
     df["lon"] = lon
+    df["type"] = _col(raw, "type").astype("string").str.strip().str.lower()
+    df["scheduled"] = _col(raw, "scheduled_service").astype("string").str.strip().str.lower()
     df = df.dropna(subset=["icao","lat","lon"])
     df = df[df["icao"].str.match(pat)]
-    df = df.drop_duplicates(subset=["icao"])
     # Ensure only ICAOs that appear in the overall candidate set (guards weird files)
     df = df[df["icao"].isin(set(icao))]
 
-    return df[["icao","lat","lon"]]
+    # Restrict to the requested OurAirports facility types. Making this explicit replaces an
+    # accidental criterion ("whatever happens to have icao_code populated") with a stated one,
+    # and keeps the airport set consistent with the modelled flight level: small fields and
+    # heliports do not generate en-route demand at FL300.
+    df_all_large = set(df.loc[df["type"] == "large_airport", "icao"])
+    if airport_types:
+        wanted = {t.strip().lower() for t in airport_types if str(t).strip()}
+        before = set(df["icao"])
+        df = df[df["type"].isin(wanted)]
+        dropped = before - set(df["icao"])
+        # Early warning for the EDDT class of problem: a major hub silently excluded. Only
+        # large_airport is reported -- warning on every scheduled small field is pure noise.
+        lost_hubs = sorted(dropped & set(df_all_large))
+        if lost_hubs:
+            print(f"[WARN] airport-types excluded {len(lost_hubs)} large_airport(s): "
+                  f"{lost_hubs[:10]}")
+
+    return df[["icao","lat","lon"]].drop_duplicates(subset=["icao"])
 
 def _pairs_from_flat_polygon(flat: list) -> list[tuple[float,float]]:
     if not isinstance(flat, list) or len(flat) < 6 or len(flat) % 2 != 0:
@@ -613,7 +647,8 @@ def main():
         if args.ourairports_path.exists():
             try:
 
-                oa_df = load_ourairports_df(args.ourairports_path)
+                oa_df = load_ourairports_df(args.ourairports_path,
+                                            airport_types=_parse_airport_types(args.airport_types))
                 # Optional geographic region restriction from config
                 regions_cfg = args.considered_geographic_regions or []
                 if regions_cfg:

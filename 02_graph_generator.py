@@ -470,7 +470,17 @@ def in_any_region(lat: float, lon: float, regions: List[List[Tuple[float,float]]
 # -------------------------
 # Data loading
 # -------------------------
-def load_ourairports_df(path: Path, icao_only: bool=True) -> pd.DataFrame:
+def _parse_airport_types(spec):
+    """None/'all' disables the filter; otherwise a comma/space-separated type list."""
+    if spec is None:
+        return None
+    t = str(spec).strip().lower()
+    if not t or t in ("all", "any", "*"):
+        return None
+    return [x for x in re.split(r"[,\s;]+", t) if x]
+
+
+def load_ourairports_df(path: Path, icao_only: bool=True, airport_types=None) -> pd.DataFrame:
     """
     Normalize to columns: ident (ICAO if available), lat, lon
     Prefer 4-letter ICAO codes; fall back to ident/gps_code if looks like ICAO.
@@ -484,18 +494,28 @@ def load_ourairports_df(path: Path, icao_only: bool=True) -> pd.DataFrame:
     icao = cand.dropna().astype(str).str.strip().str.upper()
     pat = r"^[A-Z]{4}$"
     icao = icao[icao.str.match(pat)].drop_duplicates()
-    # Compose frame
-    df = pd.DataFrame({"ident": raw["icao_code"]})
-    if df["ident"].isna().all(): df["ident"] = raw["ident"]
-    if df["ident"].isna().all(): df["ident"] = raw["gps_code"]
+    # Compose frame.
+    # NOTE: the fallback was previously `if df["ident"].isna().all()`, a whole-COLUMN test that
+    # only fires when *every* row lacks an icao_code -- which never happens. ~9,862 airports
+    # with an ICAO-shaped `ident` but empty `icao_code` were therefore silently dropped. Must be
+    # a per-ROW coalesce. Keep this in sync with 00_model_generation_script_refactored.py.
+    df = pd.DataFrame({"ident": raw["icao_code"].fillna(raw["ident"]).fillna(raw["gps_code"])})
     df["ident"] = df["ident"].astype("string").str.strip().str.upper()
     df["lat"] = pd.to_numeric(raw.get("latitude_deg", pd.Series(dtype="float64")), errors="coerce")
     df["lon"] = pd.to_numeric(raw.get("longitude_deg", pd.Series(dtype="float64")), errors="coerce")
+    df["type"] = raw.get("type", pd.Series(dtype="string")).astype("string").str.strip().str.lower()
     df = df.dropna(subset=["ident","lat","lon"])
     if icao_only:
         df = df[df["ident"].str.match(pat)]
     # Keep only idents that appear in candidate ICAOs (guards weird files)
     df = df[df["ident"].isin(set(icao))]
+
+    # Restrict to the requested OurAirports facility types (see 00_model_generation for the
+    # rationale). The navgraph airport set must match the demand model's, or flights are
+    # generated for airports that have no vertex to depart from.
+    if airport_types:
+        wanted = {t.strip().lower() for t in airport_types if str(t).strip()}
+        df = df[df["type"].isin(wanted)]
 
     return df[["ident","lat","lon"]].drop_duplicates(subset=["ident"])
 
@@ -597,6 +617,7 @@ def build_vertices(
     od_filter: pd.DataFrame | None = None,
     altitude_m: float = 0.0,
     airport_include: set[str] | None = None,
+    airport_types: list[str] | None = None,
     # Grid navpoint mode (if enabled, ignore fix.dat/nav.dat and generate artificial grid navpoints)
     grid_only: bool = False,
     grid_nx: int = 0,
@@ -613,7 +634,7 @@ def build_vertices(
     Returns a DataFrame with columns: IDENTIFIER, LAT, LON, ALTITUDE (float, meters)
     """
     # Airports
-    ap = load_ourairports_df(airports_csv, icao_only=icao_only)
+    ap = load_ourairports_df(airports_csv, icao_only=icao_only, airport_types=airport_types)
 
     ap = ap.rename(columns={"ident":"IDENTIFIER","lat":"LAT","lon":"LON"})
     # Airports are ALWAYS at FL0 (0 m) in multi-level model as well as legacy model.
@@ -1261,6 +1282,10 @@ def parse_args() -> argparse.Namespace:
                    help="Optional: include ONLY these airports (ICAO). "
                         "Either a comma/space-separated list like 'LOWW,EDDM' "
                         "or a path to a text/CSV file containing ICAO codes.")
+    p.add_argument("--airport-types", type=str, default="large_airport,medium_airport,small_airport",
+                   help="Comma-separated OurAirports facility types to include. Must match the "
+                        "value given to 00_model_generation, or the navgraph and the demand "
+                        "model will disagree on which airports exist. 'all' disables the filter.")
     p.add_argument("--criterion", type=str, default="rng", choices=["rng","gabriel"], help="Edge test: relative-neighborhood (rng) or gabriel.")
     p.add_argument("--max-edge-km", type=float, default=350.0, help="Only consider edges <= this geodesic distance (km).")
     p.add_argument("--out-dir", type=Path, default=Path("./navgraph_out"), help="Output folder for vertices.csv & edges.csv")
@@ -1405,6 +1430,7 @@ def main():
         od_filter=od_df if not od_df.empty else None,
         altitude_m = ref_alt_m,
         airport_include = airport_include,
+        airport_types = _parse_airport_types(args.airport_types),
         grid_only=bool(grid_enabled),
         grid_nx=int(args.grid_nx) if grid_enabled else 0,
         grid_ny=int(args.grid_ny) if grid_enabled else 0,
