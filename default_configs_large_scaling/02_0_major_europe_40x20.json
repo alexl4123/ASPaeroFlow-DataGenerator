@@ -45,5 +45,5 @@
     "grid-navpoints": "True",
     "grid-nx": 40,
     "grid-ny": 20,
-    "airport-include": "EGLL,LTFM,LFPG,EHAM,LEMD,EDDF,LIRF,LPPT,LOWW,LGAV,EKCH,EPWA,LSZH,ENGM,ESSA,LYBE,LROP"
+    "airport-include": "EGLL,LTBA,LFPG,EHAM,LEMD,EDDF,LIRF,LPPT,LOWW,LGAV,EKCH,EPWA,LSZH,ESSA,LYBE,LROP"
 }
