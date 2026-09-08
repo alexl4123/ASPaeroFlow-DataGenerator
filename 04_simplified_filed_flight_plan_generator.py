@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Dict, Tuple, List
 from math import ceil
 import sys
+from collections import defaultdict
 import time
 import numpy as np
 import pandas as pd
@@ -144,7 +145,9 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     # Flag obviously non-timestamp junk (helps debugging)
     junk_hint = fdf["departure_time"].str.contains(r"\[RUN\]|Traceback|^raise\b|python ", na=False)
 
-    parsed_ts = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
+    # Same tolerance as _load_flights below: this stage rewrites flights.csv with to_csv(),
+    # which uses a space separator, so the strict "T" format broke re-runs on its own output.
+    parsed_ts = pd.to_datetime(fdf["departure_time"], utc=True, errors="coerce", format="ISO8601")
     bad = parsed_ts.isna()
 
     if bad.any():
@@ -177,7 +180,12 @@ def _load_flights(data_dir: Path) -> pd.DataFrame:
     # times in the configured local frame (e.g. +08:00); forcing utc=True here re-anchored the
     # whole 24h simulation window to UTC midnight, so the end-of-window clamp below landed in
     # the middle of the local day (17.5% of USA flights, 9.7% of EAST-ASIA, 0.1% of DACH).
-    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=False, errors="coerce", format="%Y-%m-%dT%H:%M:%S%z")
+    # Accept both spellings of the same instant. Stage 01 writes isoformat() ("...T00:15:11-08:00")
+    # but THIS stage rewrites flights.csv with to_csv(), which renders the space separator
+    # ("... 00:15:11-08:00"). Pinning the strict "%Y-%m-%dT%H:%M:%S%z" made stage 04
+    # non-idempotent: re-running it on its own output failed with "Invalid timestamps".
+    fdf["departure_time"] = pd.to_datetime(fdf["departure_time"], utc=False, errors="coerce",
+                                           format="ISO8601")
     if fdf["departure_time"].isna().any():
         raise ValueError("Invalid timestamps in departure_time.")
     return fdf
@@ -240,12 +248,125 @@ def _build_speed_graph_cache(G_base: nx.Graph, speeds_kts: List[float], time_gra
     return cache
 
 
+
+def _walk(G_spd, path, fid, start, nodes_are_int, vid_to_ident):
+    """Walk a path accumulating slot times exactly as the reference rule does."""
+    t = start
+    out = []
+    for hop, node in enumerate(path):
+        if nodes_are_int:
+            if (vid_to_ident is not None) and (0 <= int(node) < len(vid_to_ident)):
+                pos = str(vid_to_ident[int(node)]).strip().upper()
+            else:
+                pos = str(int(node))
+        else:
+            pos = str(node).strip().upper()
+        if hop > 0:
+            t = t + int(G_spd[path[hop-1]][node]["weight"])
+        out.append((fid, pos, t))
+    return out, t
+
+
+def _resample_destination(G_spd, src, start, window, airport_vs, dest_weight, rng,
+                          fid, nodes_are_int, vid_to_ident, max_tries=12):
+    """
+    Pick a REPLACEMENT destination whose route fits in the remaining window.
+
+    Alexander's rule (2026-09-08): a flight that cannot fit time-wise is dropped and a shorter
+    one resampled, and the requested flight count must always be met exactly. So we never
+    truncate and never drop a row from the instance -- we re-draw the destination.
+
+    One Dijkstra from the origin bounded by the remaining budget gives every reachable airport
+    at once; we then draw among those, weighted by the empirical destination marginal so the
+    OD distribution is distorted as little as possible. Candidates are verified by actually
+    walking the path, because the walk sums int(w) per edge while Dijkstra sums the float
+    weights, and the two can disagree by a slot.
+    """
+    budget = window - start
+    if budget <= 0:
+        return None
+    try:
+        lengths = nx.single_source_dijkstra_path_length(G_spd, src, cutoff=budget, weight="weight")
+    except Exception:
+        return None
+    cand = [v for v in lengths if v != src and v in airport_vs]
+    if not cand:
+        return None
+    w = np.array([float(dest_weight.get(v, 0.0)) + 1e-9 for v in cand], dtype=float)
+    w /= w.sum()
+    order = rng.choice(len(cand), size=min(max_tries, len(cand)), replace=False, p=w)
+    for i in order:
+        dst2 = cand[int(i)]
+        try:
+            path = nx.shortest_path(G_spd, src, dst2, weight="weight")
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            continue
+        rows2, end = _walk(G_spd, path, fid, start, nodes_are_int, vid_to_ident)
+        if end <= window:
+            return dst2, rows2
+    return None
+
+
+def _nearest_fitting(G_spd, src, start, window, airport_vs, fid, nodes_are_int, vid_to_ident):
+    """
+    Nearest reachable airport, departing early enough that the leg completes in-window.
+
+    Keep the departure as close to the sampled one as possible: pinning every fallback flight to
+    `window - duration` would make them all land exactly on the window edge and build an
+    artificial arrival spike in the last slot.
+    """
+    try:
+        lengths = nx.single_source_dijkstra_path_length(G_spd, src, weight="weight")
+    except Exception:
+        return None
+    cand = sorted(((d, v) for v, d in lengths.items() if v != src and v in airport_vs))
+    for _, dst2 in cand[:8]:
+        try:
+            path = nx.shortest_path(G_spd, src, dst2, weight="weight")
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            continue
+        _, dur = _walk(G_spd, path, fid, 0, nodes_are_int, vid_to_ident)
+        if dur > window:
+            continue                          # cannot fit even departing at slot 0
+        start2 = max(0, min(int(start), window - dur))   # as late as fits, never later than sampled
+        rows2, end2 = _walk(G_spd, path, fid, start2, nodes_are_int, vid_to_ident)
+        if end2 <= window:
+            return dst2, rows2, start2
+    return None
+
+
+def _replace_origin(G_spd, start, window, airport_vs, origin_weight, dest_weight, rng,
+                    fid, nodes_are_int, vid_to_ident, max_tries=8):
+    """
+    Last resort: the sampled origin can reach NO airport at all (isolated component).
+
+    Redraw the origin too, so the requested flight count is still met exactly. This should never
+    fire on a connected navgraph; it exists so that a degenerate graph degrades gracefully
+    instead of silently producing fewer flights than requested.
+    """
+    cands = list(airport_vs)
+    if not cands:
+        return None
+    w = np.array([float(origin_weight.get(v, 0.0)) + 1e-9 for v in cands], dtype=float)
+    w /= w.sum()
+    order = rng.choice(len(cands), size=min(max_tries, len(cands)), replace=False, p=w)
+    for i in order:
+        src2 = cands[int(i)]
+        alt = _resample_destination(G_spd, src2, start, window, airport_vs, dest_weight, rng,
+                                    fid, nodes_are_int, vid_to_ident)
+        if alt is not None:
+            dst2, rows2 = alt
+            return src2, dst2, rows2
+    return None
+
+
 def generate_filed_plans(
     G_base, ident_to_vid, vid_to_ident, nodes_are_int,
     flights, aircraft_speed,
     time_granularity: int = 4,
     default_speed_kts: float = 450.0,
     considered_timespan: int = 24,
+    resample_seed: int = 42,
 ) -> pd.DataFrame:
     # Load inputs
 
@@ -306,6 +427,18 @@ def generate_filed_plans(
         print("Generating filed trajectories...")
 
     missing_paths = 0
+    resampled = 0
+    unfittable = 0
+    replaced_origin = 0
+    window = time_granularity * considered_timespan
+    airport_vs = set(flights["src"].tolist()) | set(flights["dst"].tolist())
+    dest_weight = flights["dst"].value_counts().to_dict()
+    origin_weight = flights["src"].value_counts().to_dict()
+    rng = np.random.default_rng(resample_seed)
+    reassigned = {}   # flight_id -> new dst vertex, applied to flights.csv below
+    restarted = {}    # flight_id -> new start slot, for the late-departure fallback
+    reorigined = {}   # flight_id -> new src vertex, for the isolated-origin fallback
+
     for rec in it:
         # namedtuple fields from flights dataframe
         # fields: flight_id, aircraft_id, origin, destination, departure_time, src, dst, start_slot, speed_kts
@@ -319,51 +452,51 @@ def generate_filed_plans(
 
         spd = float(rec.speed_kts)
         start = int(rec.start_slot)
-        
+
         G_spd = speed_graphs[spd]
         try:
             path = nx.shortest_path(G_spd, src, dst, weight="weight")
+            tmp_rows, max_t = _walk(G_spd, path, fid, start, nodes_are_int, vid_to_ident)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            missing_paths += 1
-            continue
+            tmp_rows, max_t = None, None
 
-        # Walk the path and accumulate times (exact same update rule as reference)
-        t = start
-
-        tmp_rows = []
-        # Implement tmp rows
-        max_t = 0
-
-        for hop, node in enumerate(path):
-            # Map node to IDENTIFIER string for output
-            if nodes_are_int:
-                if (vid_to_ident is not None) and (0 <= int(node) < len(vid_to_ident)):
-                    pos = str(vid_to_ident[int(node)]).strip().upper()
+        if tmp_rows is None or max_t > window:
+            # Does not fit (or unreachable): drop this leg and resample a shorter one, keeping
+            # the flight itself so the requested count is met exactly. Three escalating
+            # fallbacks, each with a bounded candidate list -- none of them loops.
+            tmp_rows = None
+            alt = _resample_destination(G_spd, src, start, window, airport_vs, dest_weight, rng,
+                                        fid, nodes_are_int, vid_to_ident)
+            if alt is not None:
+                new_dst, tmp_rows = alt
+                reassigned[fid] = new_dst
+                resampled += 1
+            else:
+                # (2) Nothing fits from THIS departure slot: nearest airport, departing earlier.
+                alt2 = _nearest_fitting(G_spd, src, start, window, airport_vs, fid,
+                                        nodes_are_int, vid_to_ident)
+                if alt2 is not None:
+                    new_dst, tmp_rows, new_start = alt2
+                    reassigned[fid] = new_dst
+                    restarted[fid] = new_start
+                    unfittable += 1
                 else:
-                    pos = str(int(node))
-            else:
-                pos = str(node).strip().upper()
-
-            if hop == 0:
-                tmp_rows.append((fid,pos,t))
-            else:
-                prev = path[hop-1]
-                w = G_spd[prev][node]["weight"]
-                t = t + int(w)
-                tmp_rows.append((fid,pos,t))
-
-            if t > max_t:
-                max_t = t
-
-        if max_t > time_granularity * considered_timespan:
-            needed_diff = max_t - time_granularity * considered_timespan
-
-            for i in range(len(tmp_rows)):
-                fid,pos,t = tmp_rows[i]
-                tmp_rows[i] = (fid,pos,tmp_rows[i][2] - needed_diff)
-
-
-
+                    # (3) The origin reaches no airport at all. Redraw the origin as well rather
+                    # than drop the flight, because the requested count must be met exactly.
+                    alt3 = _replace_origin(G_spd, start, window, airport_vs, origin_weight,
+                                           dest_weight, rng, fid, nodes_are_int, vid_to_ident)
+                    if alt3 is None:
+                        # Genuinely impossible on this graph. Fail loudly -- silently emitting
+                        # fewer flights than requested is exactly what must not happen.
+                        raise RuntimeError(
+                            f"flight {fid}: no origin/destination pair on this navgraph fits a "
+                            f"{window}-slot window; cannot honour the requested flight count. "
+                            f"Check navgraph connectivity (07_check_parsed_experiments_graph_"
+                            f"connectedness.py) or use a finer --time-granularity.")
+                    new_src, new_dst, tmp_rows = alt3
+                    reassigned[fid] = new_dst
+                    reorigined[fid] = new_src
+                    replaced_origin += 1
 
         rows += tmp_rows
 
@@ -371,8 +504,59 @@ def generate_filed_plans(
             print(f"  processed {len(rows)} trajectory points so far...")
             last_print = time.time()
 
+    if reassigned or reorigined or restarted:
+        # Keep flights.csv consistent with the trajectories actually emitted. Every column that
+        # describes the leg has to move together: vertex id, ICAO string, and -- for a moved
+        # departure -- BOTH start_slot and departure_time. Updating start_slot alone leaves the
+        # two disagreeing, and any downstream step that re-derives the slot from the timestamp
+        # (stage 05, or a re-run of this stage) would silently undo the change.
+        ident = {}
+        if nodes_are_int and vid_to_ident is not None:
+            touched = set(reassigned.values()) | set(reorigined.values())
+            ident = {i: str(vid_to_ident[i]).strip().upper() for i in touched
+                     if 0 <= int(i) < len(vid_to_ident)}
+
+        m = flights["flight_id"].map(reassigned)
+        hit = m.notna()
+        if hit.any():
+            flights.loc[hit, "dst"] = m[hit].values
+            flights.loc[hit, "destination"] = [ident.get(v, str(v)) for v in m[hit].values]
+
+        mo = flights["flight_id"].map(reorigined)
+        ho = mo.notna()
+        if ho.any():
+            flights.loc[ho, "src"] = mo[ho].values
+            flights.loc[ho, "origin"] = [ident.get(v, str(v)) for v in mo[ho].values]
+
+        ms = flights["flight_id"].map(restarted)
+        hs = ms.notna()
+        if hs.any():
+            slot_s = _slot_seconds(time_granularity)
+            new_slots = ms[hs].astype(int)
+            flights.loc[hs, "start_slot"] = new_slots.values
+            base = flights.loc[hs, "departure_time"].dt.normalize()
+            flights.loc[hs, "departure_time"] = (
+                base + pd.to_timedelta(new_slots.values * slot_s, unit="s"))
+
+        # a resampled leg must never become a self-loop
+        loops = int((flights["origin"].astype(str) == flights["destination"].astype(str)).sum())
+        if loops:
+            print(f"[WARN] {loops} flights became self-loops after resampling.", file=sys.stderr)
+
     if missing_paths:
-        print(f"[WARN] {missing_paths} flights had no path on the navgraph and were skipped.", file=sys.stderr)
+        print(f"[WARN] {missing_paths} flights had no reachable destination at all and were "
+              f"skipped -- the requested flight count is NOT met.", file=sys.stderr)
+    if replaced_origin:
+        print(f"[WARN] {replaced_origin} flights had an origin that reaches no airport at all; "
+              f"the origin was redrawn to preserve the requested flight count.", file=sys.stderr)
+    if resampled:
+        print(f"[INFO] {resampled} flights did not fit the "
+              f"{time_granularity*considered_timespan}-slot window; a shorter destination was "
+              f"resampled for each (flight count preserved).", file=sys.stderr)
+    if unfittable:
+        print(f"[WARN] {unfittable} flights departed too late for ANY route to complete; each "
+              f"was given its nearest airport and an earlier departure so the leg finishes "
+              f"in-window (their sampled departure time is not preserved).", file=sys.stderr)
 
     out = pd.DataFrame(rows, columns=["Flight_ID","Position","Time"])
     out["Position"] = out["Position"].astype("string")
@@ -394,6 +578,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--default-speed-kts", type=float, default=450.0,
                    help="Fallback speed if aircraft speed missing (knots).")
     p.add_argument("--considered-timespan", type=int, default=24)
+    p.add_argument("--resample-seed", type=int, default=42,
+                   help="seed for re-drawing the destination of a flight that does not fit the "
+                        "window; keep it tied to the dataset seed for reproducibility")
     return p.parse_args()
 
 
@@ -415,6 +602,7 @@ def main():
         time_granularity = args.time_granularity,
         default_speed_kts=args.default_speed_kts,
         considered_timespan=args.considered_timespan,
+        resample_seed=args.resample_seed,
     )
 
     max_time = args.time_granularity * args.considered_timespan
@@ -462,12 +650,13 @@ def main():
                 if max(df.loc[indices_cur_flight,"Time"]) > max_time:
 
                     new_aircraft_id = aircraft + f"_{str(new_aircraft_offset)}"
-                    diff = max(df.loc[indices_cur_flight,"Time"]) - max_time
 
-                    if diff_needed > diff:
-                        diff = diff_needed
-
-                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff
+                    # The forward shift above sequences this flight after the previous leg of
+                    # the same aircraft. If that pushes it past the window we give the flight a
+                    # fresh aircraft instead and undo the shift EXACTLY -- subtracting
+                    # max(over, diff_needed) as before could take the flight below its own
+                    # original departure slot and hence below t=0, violating the contract.
+                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff_needed
                     
                     aircraft_copies.append((aircraft,new_aircraft_id))
                     new_aircraft_flights.append((new_aircraft_id,cur_flight_id))
@@ -482,6 +671,72 @@ def main():
             speed = aircraft_speed[aircraft]
             aircraft_speed[new_aircraft_id] = speed
    
+    # ---- AIRCRAFT-DISJOINTNESS REPAIR -------------------------------------
+    # One airplane cannot fly two legs at once. The sequencing loop above sorts a carrier's
+    # flights by `start_slot` but compares TRAJECTORY times, and the two diverge as soon as a
+    # leg is shifted (or resampled), so some overlaps survive it -- 45 per 1000 flights in the
+    # delivered DACH TG=4 instance, 10 after the window fix alone.
+    #
+    # Enforce the invariant directly instead of trying to make the ordering exact: walk each
+    # aircraft's legs in true trajectory order and move any leg that starts before the previous
+    # one ends onto a fresh copy of that aircraft. Splitting rather than shifting keeps every
+    # timestep inside the window, so this cannot reintroduce a contract violation.
+    span = df.groupby("Flight_ID")["Time"].agg(["min", "max"])
+    fid2ac = dict(zip(flights["flight_id"], flights["aircraft_id"]))
+    by_ac = defaultdict(list)
+    for fid, r in span.iterrows():
+        by_ac[fid2ac.get(fid)].append((int(r["min"]), int(r["max"]), fid))
+
+    split = {}
+    extra_speed = {}
+    for ac, legs in by_ac.items():
+        if ac is None or len(legs) < 2:
+            continue
+        legs.sort()
+        busy_until = legs[0][1]
+        n_copy = 0
+        for lo, hi, fid in legs[1:]:
+            if lo < busy_until:                      # would overlap -> own aircraft copy
+                n_copy += 1
+                new_ac = f"{ac}_D{n_copy}"
+                split[fid] = new_ac
+                extra_speed[new_ac] = aircraft_speed.get(str(ac), args.default_speed_kts)
+            else:
+                busy_until = hi
+    if split:
+        flights["aircraft_id"] = flights.apply(
+            lambda r: split.get(r["flight_id"], r["aircraft_id"]), axis=1)
+        for k, v in extra_speed.items():
+            aircraft_speed[k] = v
+        print(f"[INFO] {len(split)} legs moved onto fresh aircraft copies so that no airplane "
+              f"flies two legs simultaneously.", file=sys.stderr)
+
+    # ---- CONTRACT GUARD ---------------------------------------------------
+    # The parsed instances the optimizers consume assume 0 <= t <= time_granularity * 24.
+    # Enforce it here, at the single point where the filed plan is written, so no combination
+    # of window truncation and aircraft re-sequencing can emit an out-of-range timestep.
+    before = len(df)
+    lo, hi = int(df["Time"].min()), int(df["Time"].max())
+    df = df[(df["Time"] >= 0) & (df["Time"] <= max_time)]
+    if len(df) != before:
+        print(f"[WARN] contract guard dropped {before - len(df)} of {before} trajectory points "
+              f"outside [0, {max_time}] (observed range [{lo}, {hi}]).", file=sys.stderr)
+    empty = set(flights["flight_id"]) - set(df["Flight_ID"])
+    if empty:
+        raise RuntimeError(
+            f"{len(empty)} flights lost every trajectory point to the contract guard, so the "
+            f"instance would contain fewer flights than requested. This is a bug in the window "
+            f"handling above, not a data property -- do not ship the result.")
+
+    # Requested count must be met EXACTLY (Alexander, 2026-09-08).
+    n_traj, n_decl = df["Flight_ID"].nunique(), flights["flight_id"].nunique()
+    if n_traj != n_decl:
+        raise RuntimeError(f"flight-count mismatch: {n_traj} in filed_flights.csv vs {n_decl} "
+                           f"in flights.csv")
+    if not df.empty:
+        assert df["Time"].min() >= 0 and df["Time"].max() <= max_time, "contract guard failed"
+    print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}].")
+
     out_path = args.data_dir / "filed_flights.csv"
     df.to_csv(out_path, index=False)
     

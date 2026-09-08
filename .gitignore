@@ -218,3 +218,10 @@ __marimo__/
 # generated datasets (published via Zenodo, not tracked here)
 unparsed_experiment_data_V2_*/
 experiment_data_V2_*/
+
+# Generated instance data -- never commit. Regenerate with run_pipeline.py; the configs and the
+# commit hash are the reproducible record, the multi-GB output is not.
+20260908_large_instances/
+experiment_data*/
+unparsed_experiment_data*/
+experiment_output/
