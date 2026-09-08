@@ -536,6 +536,11 @@ def main():
                     "--data-dir", str(ds_dir),
                     "--navgraph-dir", str(nav_dir),
                     "--time-granularity", str(a.time_granularity),
+                    # Tie the destination-resampling draw to THIS dataset's seed. Left at the
+                    # default, every (scale, seed) pair would resample with the same stream, so
+                    # the seeds would stop being independent replicates for exactly the flights
+                    # that had to be redrawn.
+                    "--resample-seed", str(seed),
                 ])
             else:
                 print("[SKIP] Trajectory Generation")
