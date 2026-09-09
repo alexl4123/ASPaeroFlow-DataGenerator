@@ -696,7 +696,12 @@ def main():
         busy_until = legs[0][1]
         n_copy = 0
         for lo, hi, fid in legs[1:]:
-            if lo < busy_until:                      # would overlap -> own aircraft copy
+            # A leg must start at least one timestep AFTER the previous one ends: arrive at t=5,
+            # depart no earlier than t=6. Sharing the boundary slot would put the aircraft at two
+            # navpoints in the same timestep and count it twice in that slot's occupancy, so
+            # `lo == busy_until` is a violation, not a rounding artefact. This matches the
+            # sequencing loop in main(), which already treats `prev_max >= cur_min` as a clash.
+            if lo <= busy_until:                     # would overlap or touch -> own aircraft copy
                 n_copy += 1
                 new_ac = f"{ac}_D{n_copy}"
                 split[fid] = new_ac
