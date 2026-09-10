@@ -225,3 +225,8 @@ experiment_data_V2_*/
 experiment_data*/
 unparsed_experiment_data*/
 experiment_output/
+# Date-stamped cluster deliveries (each contains the experiment_data*/unparsed*/overlay roots).
+# The dated wrapper directory is not matched by the patterns above, so name the shape explicitly.
+*_cluster_data/
+*_data_cluster/
+*_large_instances/
