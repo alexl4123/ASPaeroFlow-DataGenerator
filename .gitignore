@@ -230,3 +230,7 @@ experiment_output/
 *_cluster_data/
 *_data_cluster/
 *_large_instances/
+
+# Release staging (multi-GB archives; published via Zenodo, not tracked here)
+release/
+release_2*/

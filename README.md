@@ -1,125 +1,151 @@
 # ASPaeroFlow Data Generator
 
-**ASPaeroFlow Data Generator** is a Python-based toolkit to create realistic air traffic scenarios for research and simulations. It builds synthetic flight schedules and airspace structures from historical data (e.g. OpenSky Network), and prepares inputs for strategic Air Traffic Flow and Capacity Management (ATFCM) analyses. In the overall **ASPaeroFlow pipeline**, this data generator is responsible for producing the traffic scenarios – including flights, navigation points, and sector definitions – that can be fed into optimization models or simulation tools.
+Generates synthetic but realistically structured air traffic scenarios for **Air Traffic Flow and
+Capacity Management (ATFCM)** research: flight schedules, a navigation graph, sector definitions
+with capacities, and filed flight plans, in a form solvers can consume directly.
 
-## Features
-
-- **Synthetic Traffic Scenario Generation:** Construct a full day of flights based on statistical models derived from real data (e.g. OpenSky flight records).
-- **OpenSky Data Integration:** Build probabilistic models of departures, destinations, durations, and turnarounds from OpenSky flight listings.
-- **Navpoint Graph via Voronoi Partitioning:** Generate a navigation graph of waypoints and airports using geometric criteria (e.g., RNG or Gabriel Graph).
-- **Sector Generation and Capacities:** Partition airspace into sectors with configurable size and assign realistic capacities to each.
-- **Configurable Parameters:** Full control over flights, traffic scaling, navgraph shape, regions, and temporal resolution.
-- **BlueSky Simulation Compatibility:** Convert generated scenarios to `.scn` files for playback in BlueSky ATC simulator.
-- **Optimizer-Ready Output:** Output flights, sectors, and navgraph in CSV format for downstream optimization models.
-
-## Installation
-
-**Recommended platform:** Linux (tested). Basic compatibility exists for macOS and Windows (see below).
-
-1. **Clone the Repository:**
-   ```bash
-   git clone https://github.com/YourUsername/ASPaeroFlow-DataGenerator.git
-   cd ASPaeroFlow-DataGenerator
-   ```
-
-2. **Install Dependencies:**
-   ```bash
-   pip install numpy pandas networkx tqdm
-   ```
-
-3. **Download Required Data:**
-   - [OpenSky COVID19 Flight Dataset (cc-by)](https://zenodo.org/records/5815448) →  Place e.g., `flightlist_20190601_20190630.csv` in `./data/`.
-   - [OurAirports `airports.csv`](https://ourairports.com/data/airports.csv) → Place in `./ourairports/`.
-   - Optionally: `earth_fix.dat` and `earth_nav.dat` from X-Plane → Place in `./test_navpoints/`.
-
-4. **Platform Notes:**
-   - macOS: Should work if Python and dependencies installed.
-   - Windows: Use WSL or adjust paths and shell calls accordingly.
-
-## Usage
-
-Run the full scenario generator:
-
-```bash
-python run_pipeline.py \
-  --csv-path data/flightlist_20190601_20190630.csv \
-  --target-day 2019-06-15 \
-  --config configs/dach_region.json \
-  --experiment-name DACH-2019-06-15 \
-  --scale 0.5 \
-  --seed 42
-```
-
-### Common Options
-
-| Option | Description |
-|--------|-------------|
-| `--csv-path` | Path to OpenSky CSV (or folder of them) |
-| `--target-day` | Day to simulate (`YYYY-MM-DD`) |
-| `--scale` or `--flights` | Scale traffic by factor or use exact flight count |
-| `--experiment-name` | Folder name under `unparsed_experiment_data/` |
-| `--grid-navpoints true` | Use synthetic navpoint grid instead of real fixes |
-| `--sector-default-navaid-size N` | Approx. navpoints per sector (for grouping) |
-| `--time-granularity` | Time slot size (e.g. 4 = 15 min) |
-| `--seed` | Random seed for reproducibility |
-
-See `--help` for more.
-
-## Outputs
-
-Generated in `unparsed_experiment_data/<experiment-name>/`
-
-- `model/`: Statistical models (departure rates, durations, etc.)
-- `navgraph/`: 
-  - `vertices.csv`: Waypoints and airports
-  - `edges.csv`: Navgraph edges
-  - `sectors.csv`: Sector capacities
-  - `navaid_sector_assignment.csv`: Sector grouping (if used)
-- `DATA_S*/`: 
-  - `flights.csv`, `aircrafts.csv`
-  - `filed_flights.csv`: Flight plans (waypoints + timestamps)
-  - `manifest.json`: Summary of the run
-
-Optional:
-- `experiment_data/`: Transformed version for solvers
-- `bluesky/`: `.scn` file for BlueSky simulator
-
-## BlueSky Conversion
-
-```bash
-python 06_bluesky_converter.py \
-  --data-dir unparsed_experiment_data/DACH-2019-06-15/DATA_S0p5_42 \
-  --navgraph-dir unparsed_experiment_data/DACH-2019-06-15/navgraph \
-  --time-granularity 60
-```
-
-## Repository Structure
-
-| Script | Purpose |
-|--------|---------|
-| `00_model_generation_script_refactored.py` | Learns statistical traffic model |
-| `01_data_generation_script_refactored.py` | Samples synthetic flights |
-| `02_graph_generator.py` | Builds navgraph (grid or real fixes) |
-| `03_sector_capacity_generator.py` | Assigns sector IDs and capacities |
-| `04_simplified_filed_flight_plan_generator.py` | Generates routed flight plans |
-| `05_transform_for_optimizer.py` | (Optional) Converts for solver input |
-| `06_bluesky_converter.py` | (Optional) Creates BlueSky `.scn` file |
-| `07_check_parsed_experiments_graph_connectedness.py` | (Debugging) Checks graph connectivity |
-
-## Development
-
-- **Custom Regions:** Use `--config` JSON with a polygon to restrict to a geographic area.
-- **Navgraph Tweaks:** Adjust RNG vs Gabriel Graph, or grid shape and spacing.
-- **Sectorization Control:** Use BFS grouping or convex grouping mode.
-- **Multiple Scenarios:** Use `--flight-scales` and `--flight-seeds` as lists.
-- **Testing:** Run small scenarios first and validate route feasibility.
-
-## License
-
-MIT license with attribution (for details see license.md).
+Demand, origin–destination structure, flight durations and turnaround times are all estimated
+from a real flight list (OpenSky). The output is a *benchmark* dataset built from real data — it
+is designed to produce instances that are challenging to solve, and its fidelity to real traffic
+is measured and documented rather than assumed (see `FUTURE_WORK.md`).
 
 ---
 
-*This README describes the ASPaeroFlow-DataGenerator for air traffic research. Outputs are compatible with BlueSky, optimization models, or ASP-based planning.*
-*This README was created with the help of generative AI.*
+## Requirements
 
+* **Python ≥ 3.10** (the code uses `X | None` annotations)
+* `pip install -r requirements.txt` — pandas, numpy, **scikit-learn**, networkx, tqdm
+
+scikit-learn is not optional: `sklearn.neighbors.BallTree` builds the navigation graph.
+
+## Input data
+
+| input | where it goes | needed for | licence |
+|---|---|---|---|
+| [OpenSky COVID-19 flight dataset](https://zenodo.org/records/5815448), e.g. `flightlist_20190601_20190630.csv` | anywhere; pass `--csv-path` | everything | CC-BY-4.0 |
+| [OurAirports `airports.csv`](https://ourairports.com/data/airports.csv) | `./ourairports/` (a patched snapshot is tracked here) | airport set | public domain |
+| X-Plane navdata: **`fix.dat`** and **`nav.dat`** | `./test_navpoints/` | only for real-waypoint regions | GPL-2.0-or-later |
+
+The navdata files are named `fix.dat` and `nav.dat` — *not* `earth_fix.dat` / `earth_nav.dat`.
+They are only read when building a graph from real waypoints. With `--grid-navpoints true` the
+generator synthesises a rectangular grid instead and **no navdata is needed at all**; every
+`*_small_scaling` and grid region works this way.
+
+---
+
+## Pipeline
+
+`run_pipeline.py` drives six stages and skips any whose artefacts already exist:
+
+| stage | script | produces |
+|---|---|---|
+| 00 | `00_model_generation_script_refactored.py` | `model/` — per-airport departure profiles, origin-conditional OD model, duration and turnaround distributions |
+| 01 | `01_data_generation_script_refactored.py` | `flights.csv`, `aircrafts.csv` per dataset |
+| 02 | `02_graph_generator.py` | `navgraph/` — vertices and edges |
+| 03 | `03_sector_capacity_generator.py` | sector clustering and capacities |
+| 04 | `04_simplified_filed_flight_plan_generator.py` | `filed_flights.csv` — the routed, time-stamped plan |
+| 05 | `05_transform_for_optimizer.py` | the solver-ready instance directory |
+
+Then, optionally:
+
+| script | purpose |
+|---|---|
+| `06_capacity_sweep.py` | computes each instance's **nominal capacity** (its peak sector occupancy) and emits overlays at 10 %–100 % of it — the PCAP levels in the published dataset |
+| `06_bluesky_converter.py` | export to BlueSky |
+| `07_check_parsed_experiments_graph_connectedness.py` | sanity check on parsed output |
+| `build_release_zips.py` | assembles the release archives, materialising every capacity level |
+
+### Running it
+
+Everything is driven by a JSON config; the CLI only overrides.
+
+```bash
+python run_pipeline.py --config default_configs_large_scaling_tg/04_0_dach_TG60.json
+python 05_transform_for_optimizer.py --experiment-dir unparsed_experiment_data_.../<REGION> \
+                                     --out-root experiment_data_...
+python 06_capacity_sweep.py --experiment experiment_data_.../<REGION> --overlay-root capacity_overlays_...
+```
+
+### Config families
+
+| directory | what it is |
+|---|---|
+| `default_configs/` | single-region examples |
+| `default_configs_TG4/` | the earlier published (v1) instances |
+| `default_configs_large_scaling_tg/` | **the shipped large-scale family**: 8 regions × TG {1,4,15,60} |
+| `default_configs_small_scaling/` | **the shipped small-scale family**: 5 grid regions, 10–100 flights |
+| `default_configs_validation_seeds/` | 10-seed and odd/even hold-out runs for the statistical validation — evaluation only, never shipped |
+
+### Frequently used options
+
+| option | meaning |
+|---|---|
+| `--config` | JSON config; supplies defaults for everything below |
+| `--csv-path` | the OpenSky flight list (file or directory) |
+| `--date-start` / `--date-end` | the date range to fit the model on. **Use this**, not `--target-day`, which is the legacy single-day mode |
+| `--day-parity {all,odd,even}` | fit on half the calendar days, for held-out validation |
+| `--time-granularity` | bins per hour: 1 = 60-minute timesteps, 60 = 1-minute timesteps |
+| `--flight-flights` / `--flight-seeds` | the (demand level, seed) grid to generate |
+| `--timezone` | hours offset; the model is localised before binning |
+| `--grid-navpoints` | synthesise grid vertices instead of reading X-Plane navdata |
+| `--criterion {gabriel,rng}`, `--max-edge-km` | navgraph topology |
+| `--cap-enroute`, `--cap-airport` | per-timestep capacities written into `sectors.csv` |
+| `--resample-seed` | seed for stage 04's destination resampling |
+
+---
+
+## Four conventions that will otherwise surprise you
+
+**① Capacities are per TIMESTEP, not per hour.** `sectors.csv::Capacity` is the number of flights
+allowed in a sector during one timestep. At TG=60 that timestep is one minute. Do not divide by
+the number of timesteps in an hour.
+
+**② `sectors.csv` is keyed by NAVAID despite the column being called `Sector_ID`.** There is one
+row per graph vertex; `navaid_sector_assignment.csv` maps vertices onto sector clusters (DACH at
+TG=60: 1,508 vertices onto 182 sectors). How per-vertex capacities compose into a sector capacity
+is the solver's choice — the reference optimizer offers `max` (default), `sum` and average-based
+rules.
+
+**③ The 24-hour window is a hard contract.** Every flight departs and lands within
+`[0, TG × 24]`. Stage 04 enforces it by resampling a nearer destination when a drawn flight will
+not fit, and raises rather than silently shipping a short instance. A consequence is that
+instances begin and end with empty airspace.
+
+**④ Stage 04 is NOT idempotent.** It rewrites `flights.csv`. Re-running a pipeline must start from
+stage 01, not stage 04 — delete the `DATA_*` directories first. Note also that `run_pipeline.run()`
+captures subprocess output and prints it only on failure, so stage 04's `[OK] …` confirmation line
+never appears in a successful pipeline log. Judge success by the exit code.
+
+---
+
+## Time granularity: pick it with the graph, not the region
+
+Each edge traversal costs at least one whole timestep. So when a timestep is longer than the time
+an aircraft needs to cross one edge, flight duration becomes `hops × timestep` rather than
+distance ÷ speed. Graphs with many short edges therefore need a fine granularity:
+
+| graph | hops | faithful from |
+|---|---|---|
+| coarse grids (e.g. 7×7, ~5.6 hops) | few | TG ≥ 4 |
+| Gabriel graphs (e.g. DACH, ~24 hops) | many | TG ≥ 15, ideally 60 |
+
+Measured on DACH: `hops × timestep` predicts 1440 / 360 / 96 minutes at TG = 1 / 4 / 15, observed
+1427 / 358 / 98. At TG=60 the effect stops binding and duration follows the real geometry. This
+is a property of the topology, not of the region — see `FUTURE_WORK.md` §D1.
+
+---
+
+## Licence
+
+* Code: **MIT** (`license.md`).
+* Generated instance data: **CC-BY-4.0**, because it derives from the CC-BY OpenSky flight list
+  and that attribution has to travel with it.
+* Third-party inputs keep their own licences: OpenSky CC-BY-4.0, X-Plane navdata
+  GPL-2.0-or-later, OurAirports public domain. The published dataset records carry a
+  `NOTICE-THIRD-PARTY.md` with the full attribution chain.
+
+## Known defects and planned work
+
+`FUTURE_WORK.md` (project root) lists ten measured defects with evidence and fix directions. The
+two that matter most: flight duration is a near-deterministic function of distance through only
+three speed values, and the demand model has no day-of-week cycle.

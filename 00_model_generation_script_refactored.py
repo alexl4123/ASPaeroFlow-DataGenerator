@@ -179,6 +179,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path, default=Path(cfg_get("out-dir", "./model_out")),
                     help="Base output directory; an auto-named experiment subfolder will be created inside.")
 
+    p.add_argument("--day-parity", type=str, default=str(cfg_get("day-parity", "all")),
+                   choices=["all", "odd", "even"],
+                   help="Fit on all calendar days (default), or only odd/even days of the "
+                        "month. Used for held-out validation; not for shipped instances.")
     p.add_argument("--flat-out", action="store_true",
                     help="Write files directly into --out-dir (disable auto-named subfolder).")
 
@@ -316,7 +320,8 @@ def load_filtered(csv_path: Path,
                   # date range (for averaging meta)
                   date_start: str | None,
                   date_end: str | None,
-                  chunksize: int) -> pd.DataFrame:
+                  chunksize: int,
+                  day_parity: str = "all") -> pd.DataFrame:
     """
     Load one or more CSVs and filter rows to (a) a single target day, or (b) an inclusive
     date range. In both cases we only keep flights that start and land on the same UTC day.
@@ -362,6 +367,17 @@ def load_filtered(csv_path: Path,
                 # range is inclusive on both ends
                 mask = sane & (first_day >= date_start) & (first_day <= date_end)
 
+            # Hold-out support: fit the model on half the calendar days so that validation can
+            # be run against the other half. Without this the validation is in-sample -- the
+            # sampler is asked to reproduce a histogram built from the very days it is scored
+            # against -- and a reviewer will say so. Parity is taken on the day of month, which
+            # also breaks the weekly cycle (June 2019 has 30 days, so odd and even days each
+            # cover every weekday).
+            if day_parity != "all":
+                dom = pd.to_numeric(first_day.str.slice(8, 10), errors="coerce")
+                want = 1 if day_parity == "odd" else 0
+                mask = mask & (dom % 2 == want)
+
             if not mask.any():
                 continue
 
@@ -406,6 +422,7 @@ def build_models(
     date_end: str | None,
     seed: int | None,
     timezone: float,
+    day_parity: str = "all",
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]], np.ndarray, Dict[Tuple[str,str], np.ndarray], pd.Series]:
     rng = np.random.default_rng(seed)
 
@@ -479,6 +496,12 @@ def build_models(
         start = pd.to_datetime(date_start).date()
         end   = pd.to_datetime(date_end).date()
         all_days = pd.date_range(start=start, end=end, freq="D").date
+        # The denominator of the per-day average must count only the days actually fitted.
+        # Averaging 15 odd days over a 30-day calendar would halve every departure rate and
+        # silently produce a model at half the real demand.
+        if day_parity != "all":
+            want = 1 if day_parity == "odd" else 0
+            all_days = np.array([d for d in all_days if d.day % 2 == want])
     else:
         # single-day mode: whatever is present
         all_days = pd.Index(sorted(daily_pivot.index.get_level_values("_date").unique()))
@@ -704,6 +727,7 @@ def main():
         date_start=args.date_start,
         date_end=args.date_end,
         chunksize=args.chunksize,
+        day_parity=args.day_parity,
     )
 
     airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq, dur_tertiles = build_models(
@@ -725,6 +749,7 @@ def main():
         date_end=args.date_end,
         seed=args.seed,
         timezone=float(args.timezone),
+        day_parity=args.day_parity,
     )
 
     # --- build auto-named experiment directory ---

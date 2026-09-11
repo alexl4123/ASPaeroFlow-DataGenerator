@@ -1,0 +1,16 @@
+# ASPaeroFlow data generator -- runtime dependencies.
+# Python >= 3.10 is required (the code uses PEP 604 "X | None" annotations).
+#
+# Verified with the versions in the right-hand comments; the floors are the
+# minimum the code is known to work with.
+pandas>=2.0            # verified with 3.0.5
+numpy>=1.24            # verified with 2.5.2
+scikit-learn>=1.3      # verified with 1.9.0 -- BallTree builds the navgraph (02_graph_generator.py)
+networkx>=3.0          # verified with 3.6.1
+tqdm>=4.60             # verified with 4.70.0
+
+# NOTE ON REPRODUCIBILITY: sklearn.neighbors.BallTree determines vertex
+# neighbourhoods in the navgraph, so a different scikit-learn version could in
+# principle change the generated graph. Byte-identical regeneration has only
+# been demonstrated with the versions above, on one machine. Pin exactly if you
+# need to reproduce the published instances bit for bit.
