@@ -1,0 +1,756 @@
+{
+  "env": {
+    "PYTHONHASHSEED": "0",
+    "pandas": "3.0.5",
+    "python": "3.12"
+  },
+  "files": {
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/airplane_flight_assignment.csv": {
+      "bytes": 284,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "92d3facf9d37ded498e1344292256d2e00a7ab35cb7d88fda90d6c925cb70756",
+        "Flight_ID": "a8ee05ff4972b84f33eb7c936ce8b37334f46445d9ffa2df6b5a8428b0f99970"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Flight_ID"
+      ],
+      "kind": "csv",
+      "rows": 50,
+      "sample_rows": [
+        "0,0",
+        "0,4"
+      ],
+      "sha256": "31861420aeeac66d23ee2b03334a4db9bbfd882d70eafd69bf7e070064919b6e",
+      "sha256_sorted": "a408a7080140e678d3f0f93990f22c2c4cfa5e109803eefb753482fa31e8e358"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/airplanes.csv": {
+      "bytes": 219,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "0a289b952890ea3d52316faa750dcbff29cc0f90aa555b00268e38273fb564e6",
+        "Speed_kts": "b463a4e26f8b8b679c1b77f32fc64846c99c94094362b49ab00bfbd5cbc23e05"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 23,
+      "sample_rows": [
+        "0,450.0",
+        "1,430.0"
+      ],
+      "sha256": "8dc4045a5c5078ac41e3b5c3b1488c383648778141c6664ec6a185f288bda553",
+      "sha256_sorted": "537d81782c75c44370ccc2919e7d68a5f08a51af7a36b5aeb37d9006f5bdcc3c"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/airports.csv": {
+      "bytes": 38,
+      "cols": 1,
+      "column_sha256": {
+        "Airport_Vertex": "2f2752c837d8c8f2a6cdc49c9515738183bcbb9afd8a291f8ef78962d40b0c40"
+      },
+      "columns": [
+        "Airport_Vertex"
+      ],
+      "kind": "csv",
+      "rows": 8,
+      "sample_rows": [
+        "9",
+        "10"
+      ],
+      "sha256": "94611ce46d702dec653427b3dabb4d48dc13daf74042d4274abb43e14227dec0",
+      "sha256_sorted": "917c250a244f666e75eb2489c50dca44f1867b246d035bafb916d35fcb520d1e"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/flights.csv": {
+      "bytes": 1804,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "029a2e2b88a7d0865f273341dc0de0dd753744d7eadca4d0dea102accf72bfb4",
+        "Position": "58b6cd25e09651a2f684e541c23342f5d08538736e4a428f0e07b05f1c0ebf18",
+        "Time": "908644beee433e86cac1cfb781a953668d0855341ca1a992f32f9764fad49b1b"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 216,
+      "sample_rows": [
+        "0,15,9",
+        "0,0,10"
+      ],
+      "sha256": "f7dec6d8207cb940765f48380fda59f9763d0250fc411d514beb99f46d23ec25",
+      "sha256_sorted": "9a4ed97a4fda60d377edcbe075e37605a18299b28b965c84203ee07c839950a5"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/graph_edges.csv": {
+      "bytes": 462,
+      "cols": 3,
+      "column_sha256": {
+        "dist_m": "50b973d7a9f7a45faaef3a3ad27b4caf79775c1d9be0f213ccf31aa25e06c95a",
+        "source": "fd24e52950be20814b82a2523938365cc228421963888e4cb75ee3f88e40eb1c",
+        "target": "64646a40fb80c3d361b1b79b24493c9261f12fafb61cabbd06ffbfb230a8d0fa"
+      },
+      "columns": [
+        "source",
+        "target",
+        "dist_m"
+      ],
+      "kind": "csv",
+      "rows": 28,
+      "sample_rows": [
+        "0,1,1351188.334",
+        "0,2,993085.935"
+      ],
+      "sha256": "796d6907640fcc7a35ac8012dc54141dd52d9200e418f3f40bece8f86be66af0",
+      "sha256_sorted": "a25d4db90e33687cf093ba36212617eb154e30994dfe81a99a5b70b8375c354d"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/mappings/id_maps.json": {
+      "bytes": 3452,
+      "kind": "json",
+      "sha256": "0e50f29f013f8f77efc4e24dd318411f42c09f108916cb72999ef93daa44cae5"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/mappings/vertex_map.csv": {
+      "bytes": 354,
+      "cols": 2,
+      "column_sha256": {
+        "IDENTIFIER": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6",
+        "VERTEX_ID": "2a8ac91307ef430dae4b7d31a2eca9dae774d1746fdac17e8deb326726d05068"
+      },
+      "columns": [
+        "IDENTIFIER",
+        "VERTEX_ID"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "GRID_EAST-ASIA_Y00X00_FL100,0",
+        "GRID_EAST-ASIA_Y00X01_FL100,1"
+      ],
+      "sha256": "c6c3b6ee9e5e59c96cb9c2fe15ce2f4b59b3f9ee9f32a70ffafca8a1bc2d6bd4",
+      "sha256_sorted": "2533c822b5f3d02aa6572c7db62a6eb90b164e93bb8e47db0308f90b7ccf9e4c"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/navaid_sector_assignment.csv": {
+      "bytes": 102,
+      "cols": 2,
+      "column_sha256": {
+        "Navaid_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c",
+        "Sector_ID": "1a008325970bf241b6634eb5000abe82b832db52fb06836c60ff79a83310a512"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,0",
+        "1,0"
+      ],
+      "sha256": "5ccde102084d44b675dd820e1a986e4bfe7d79eded63df43d1e96fb1c373a81a",
+      "sha256_sorted": "a62192bce8f6c95a6908142bbc149fb36c3a43110d5380716f84e511a7373115"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/sectors.csv": {
+      "bytes": 126,
+      "cols": 2,
+      "column_sha256": {
+        "Capacity": "b85720552cfb400d7f3d40de1571243484a8ffca11cceaa6d0b38aee58ecf3c3",
+        "Sector_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c"
+      },
+      "columns": [
+        "Sector_ID",
+        "Capacity"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,1",
+        "1,1"
+      ],
+      "sha256": "6f333a9e2ce7a90819336aea579c0b3e8a46221245b66218142d110588c0f878",
+      "sha256_sorted": "c0d5b2ea8e652cccdfe09a761f852a37991937a44b48dcee416e8cec6884881f"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/transform_manifest.json": {
+      "bytes": 402,
+      "kind": "json",
+      "sha256": "112cdbf2c0c5e20d6642f15a11ddec23c2dad66b3b55192d03aad71be3288836"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/airplane_flight_assignment.csv": {
+      "bytes": 582,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "edfc2d7e2c57087883e608440753efb29a73009a471da2ef09ea208fa0b8c472",
+        "Flight_ID": "520e53c630ec9ac1553971270e1a563386ef05cb96118ab841db310081317c53"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Flight_ID"
+      ],
+      "kind": "csv",
+      "rows": 100,
+      "sample_rows": [
+        "0,0",
+        "0,12"
+      ],
+      "sha256": "e7a63ed7600b36195cf893fce29eebcf8c38fced05fa4a5e03f86bf5458873af",
+      "sha256_sorted": "100373970941103646a8ddcc9e8797f95436b6da8a4c8d4ef3e4d7e17511e1d6"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/airplanes.csv": {
+      "bytes": 426,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "ac74391f445fffbe4747ad40e8270e9cee1b655e30104275caa357913a6679d5",
+        "Speed_kts": "0a04f76bdc82317132f4dd0cb4176f83d89632b825f5c5d89832f3f3400d5639"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 46,
+      "sample_rows": [
+        "0,480.0",
+        "1,450.0"
+      ],
+      "sha256": "488e08557f627fd45ffa274e9a0c38abb07e5e903a10d3bd02bdcb75cbc5544d",
+      "sha256_sorted": "1c9c5274b76dad8bf00d2a4bfc312eedab621e444df9b7d4d0ecc513c260800b"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/airports.csv": {
+      "bytes": 38,
+      "cols": 1,
+      "column_sha256": {
+        "Airport_Vertex": "2f2752c837d8c8f2a6cdc49c9515738183bcbb9afd8a291f8ef78962d40b0c40"
+      },
+      "columns": [
+        "Airport_Vertex"
+      ],
+      "kind": "csv",
+      "rows": 8,
+      "sample_rows": [
+        "9",
+        "10"
+      ],
+      "sha256": "94611ce46d702dec653427b3dabb4d48dc13daf74042d4274abb43e14227dec0",
+      "sha256_sorted": "917c250a244f666e75eb2489c50dca44f1867b246d035bafb916d35fcb520d1e"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/flights.csv": {
+      "bytes": 3605,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "dd09187a3a0ba2d942943fd9e7c0fa67d9349376b355c05ad6c5c68e33ca62ef",
+        "Position": "c12e9b01fb2d6acd322384cd288cb9443e33d8dcfdcf55e517b3694de8de7038",
+        "Time": "4fa85a316d284cca43bf4a7ef0e3f68dc578347635040fe791c8ca8a85c2a619"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 430,
+      "sample_rows": [
+        "0,15,2",
+        "0,0,3"
+      ],
+      "sha256": "2aa002546f85a905882b121c109d94ea1f206665d803825c93ababc8e9fde983",
+      "sha256_sorted": "0698c6108e2b08d314965e62a3ad5abb65d95f6e550cf756283141756e805301"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/graph_edges.csv": {
+      "bytes": 462,
+      "cols": 3,
+      "column_sha256": {
+        "dist_m": "50b973d7a9f7a45faaef3a3ad27b4caf79775c1d9be0f213ccf31aa25e06c95a",
+        "source": "fd24e52950be20814b82a2523938365cc228421963888e4cb75ee3f88e40eb1c",
+        "target": "64646a40fb80c3d361b1b79b24493c9261f12fafb61cabbd06ffbfb230a8d0fa"
+      },
+      "columns": [
+        "source",
+        "target",
+        "dist_m"
+      ],
+      "kind": "csv",
+      "rows": 28,
+      "sample_rows": [
+        "0,1,1351188.334",
+        "0,2,993085.935"
+      ],
+      "sha256": "796d6907640fcc7a35ac8012dc54141dd52d9200e418f3f40bece8f86be66af0",
+      "sha256_sorted": "a25d4db90e33687cf093ba36212617eb154e30994dfe81a99a5b70b8375c354d"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/mappings/id_maps.json": {
+      "bytes": 6810,
+      "kind": "json",
+      "sha256": "a7cf28392710c136d2ae5bbfd7417f1ae7dbdd5694899f6633a4c3a27b1ee203"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/mappings/vertex_map.csv": {
+      "bytes": 354,
+      "cols": 2,
+      "column_sha256": {
+        "IDENTIFIER": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6",
+        "VERTEX_ID": "2a8ac91307ef430dae4b7d31a2eca9dae774d1746fdac17e8deb326726d05068"
+      },
+      "columns": [
+        "IDENTIFIER",
+        "VERTEX_ID"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "GRID_EAST-ASIA_Y00X00_FL100,0",
+        "GRID_EAST-ASIA_Y00X01_FL100,1"
+      ],
+      "sha256": "c6c3b6ee9e5e59c96cb9c2fe15ce2f4b59b3f9ee9f32a70ffafca8a1bc2d6bd4",
+      "sha256_sorted": "2533c822b5f3d02aa6572c7db62a6eb90b164e93bb8e47db0308f90b7ccf9e4c"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/navaid_sector_assignment.csv": {
+      "bytes": 102,
+      "cols": 2,
+      "column_sha256": {
+        "Navaid_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c",
+        "Sector_ID": "1a008325970bf241b6634eb5000abe82b832db52fb06836c60ff79a83310a512"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,0",
+        "1,0"
+      ],
+      "sha256": "5ccde102084d44b675dd820e1a986e4bfe7d79eded63df43d1e96fb1c373a81a",
+      "sha256_sorted": "a62192bce8f6c95a6908142bbc149fb36c3a43110d5380716f84e511a7373115"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/sectors.csv": {
+      "bytes": 126,
+      "cols": 2,
+      "column_sha256": {
+        "Capacity": "b85720552cfb400d7f3d40de1571243484a8ffca11cceaa6d0b38aee58ecf3c3",
+        "Sector_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c"
+      },
+      "columns": [
+        "Sector_ID",
+        "Capacity"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,1",
+        "1,1"
+      ],
+      "sha256": "6f333a9e2ce7a90819336aea579c0b3e8a46221245b66218142d110588c0f878",
+      "sha256_sorted": "c0d5b2ea8e652cccdfe09a761f852a37991937a44b48dcee416e8cec6884881f"
+    },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/transform_manifest.json": {
+      "bytes": 404,
+      "kind": "json",
+      "sha256": "9b0832ccdf34fa0ee947b8c790cd79f31ea52d6d029d30e9941ab3dd6d57e865"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S100_42/aircrafts.csv": {
+      "bytes": 712,
+      "cols": 2,
+      "column_sha256": {
+        "aircraft_id": "2af07bf58dcf7d4f2870144155303c5dbe5bfd3f6418d8e9d6d1f6f415245225",
+        "speed_kts": "e5b783d835ac4ae83688870fa2746bd82c8fbe9f69b273326c8b42800a5a9caa"
+      },
+      "columns": [
+        "aircraft_id",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 46,
+      "sample_rows": [
+        "AC000001,480.0",
+        "AC000002,450.0"
+      ],
+      "sha256": "0600c10c76b1b3284618c089e6afa01f380962c8bf0404623d35193d58f7065e",
+      "sha256_sorted": "eb8c3246e9638b32a190e50186b438ed9e8ffc94754496a8682b90642dd1aa29"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S100_42/filed_flights.csv": {
+      "bytes": 12617,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "409b19f2f90b6f6bc4634f039094a415304740b9982e9ea4b4a97faf65fac97d",
+        "Position": "525f190e98623e7f9e251040db950db3e9bcf430443320fba78cd3f4c29fa0a2",
+        "Time": "e275eec3dedd78122d1c09e11f475ed6f3a54d04347750aaa54fa31eb2639639"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 430,
+      "sample_rows": [
+        "F0000001,VHHH,2",
+        "F0000001,GRID_EAST-ASIA_Y00X00_FL100,3"
+      ],
+      "sha256": "f6f7eb919dc9f576a0efe18777c46e6bf89b40b12e2b382e049643f2969a4353",
+      "sha256_sorted": "cdc4f3fbc6fbc0f4442839b9739de4ca0b50273bbd86d4a3d8c6a2cd41675c1b"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S100_42/flights.csv": {
+      "bytes": 7683,
+      "cols": 10,
+      "column_sha256": {
+        "_lineno": "adc4d64fe9531e179ed12975858a1c70fcb9f1f654729f86634290e4dc0a6da8",
+        "aircraft_id": "91b535ded0d48d37568fe686eeb5149314b9eaee7fb5a39005ac6f5402ccc8e7",
+        "departure_time": "2d5284d6f71b3bb1afe6a53febcff351536b2220ce6685980af81e64509fd5bb",
+        "destination": "97c550fde70c0346d995058dd163a38bb25524ec1e0f9d3f5e308b30c6fe9856",
+        "dst": "97c550fde70c0346d995058dd163a38bb25524ec1e0f9d3f5e308b30c6fe9856",
+        "flight_id": "27a72379d59314cc3b2a32b249760640d6ed4d6b50094fb160a3ed05f0e9a951",
+        "origin": "13f5eae167c76b30b1a57822ec4f600cd4114efc46e327b9bb0e74fc72f942d0",
+        "speed_kts": "8912dae436a7da31e0c397d560c040af5f4d784a9c2a42a5af25fe841e74970d",
+        "src": "13f5eae167c76b30b1a57822ec4f600cd4114efc46e327b9bb0e74fc72f942d0",
+        "start_slot": "b2c822400b5f7952c8069887f187e3f24ef8210d7d3a516f3f79bff7b21237ee"
+      },
+      "columns": [
+        "flight_id",
+        "aircraft_id",
+        "origin",
+        "destination",
+        "departure_time",
+        "_lineno",
+        "src",
+        "dst",
+        "start_slot",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 100,
+      "sample_rows": [
+        "F0000001,AC000001,VHHH,RJBB,2019-06-01 00:33:51+06:00,2,VHHH,RJBB,2,480.0",
+        "F0000002,AC000002,VHHH,RCTP,2019-06-01 00:41:19+06:00,3,VHHH,RCTP,2,450.0"
+      ],
+      "sha256": "542ab8eaec220b96d5e9dca8c314fff3662b1bf6e6646bf0befb380aaa472ffb",
+      "sha256_sorted": "53afdd23642d02cd12eb57ddc75252b71631004097be8d774b311a2965e86f52"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S100_42/run_config.json": {
+      "bytes": 288,
+      "kind": "json",
+      "sha256": "d2961c41fe35cbedb37f934fa9a1c39b33c4737477baa1f9ef85619584998069"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S50_42/aircrafts.csv": {
+      "bytes": 367,
+      "cols": 2,
+      "column_sha256": {
+        "aircraft_id": "de0823f7a66208c46edda00889ccb00c75b7901cb446bcc443d65a7a57d5875f",
+        "speed_kts": "45b0d775cc18717d12681a8cf2c4624403857b0b080796d8699d62e4570db52a"
+      },
+      "columns": [
+        "aircraft_id",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 23,
+      "sample_rows": [
+        "AC000001,450.0",
+        "AC000002,430.0"
+      ],
+      "sha256": "f87ba33204eafb7b38136d130dbeb082268e3d8aa2bbcf57d5f24e08ad1c9999",
+      "sha256_sorted": "1f4ed9463f6382781b16f6aedde378a734f4708f1eb1a7cfa839e6b29691706a"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S50_42/filed_flights.csv": {
+      "bytes": 6363,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "583657fbf8827b944d672e97c5610e33aec58b2eddc255953f50efe9fd4b1fc6",
+        "Position": "332e24015be225ebd9db7c62ddf003753b25a85c83e72eefb5872513180b1a14",
+        "Time": "1a9c2b035a23d085136e385f59cc5641fc7ace075a77873467d413ce715b1818"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 216,
+      "sample_rows": [
+        "F0000001,VHHH,9",
+        "F0000001,GRID_EAST-ASIA_Y00X00_FL100,10"
+      ],
+      "sha256": "a3ce75f8e750f2e9e376c561428a8d127154c8b4ee8c3bf818c28b8f171a4898",
+      "sha256_sorted": "b8679e0aa8bf58c7b56220064ebcf197af9aaca9d2ed8f772ef322e76331d54e"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S50_42/flights.csv": {
+      "bytes": 3884,
+      "cols": 10,
+      "column_sha256": {
+        "_lineno": "899a3ecdf077dde1e732706a0b94ae9449c044d1562459302db5b5efdd0b81c1",
+        "aircraft_id": "24e055db34c4e262d8a2dc15c27f7bdae4646c75cdff570cf2e0aaa75006c608",
+        "departure_time": "934323e452ce5e957b05f1cb35ee07ace4dc49c9014a913d14465c256b4429fa",
+        "destination": "5d6b441fb2537fe629e85570d4abf858c4f66dbbfb7f484ddf0c0e7faecc52a7",
+        "dst": "5d6b441fb2537fe629e85570d4abf858c4f66dbbfb7f484ddf0c0e7faecc52a7",
+        "flight_id": "72d805fe9df037c239e008273e33f14e27489c6d256214d5ddbf67e3e03ecc45",
+        "origin": "b95fd93e9496e4f8139d6fcdd1d686da3f019b3922382dbaf2081571b8d991e8",
+        "speed_kts": "d39a3bc9014c188c61f840989f41c7b3a8e1d0ce36d8111da1c8f007083249ff",
+        "src": "b95fd93e9496e4f8139d6fcdd1d686da3f019b3922382dbaf2081571b8d991e8",
+        "start_slot": "5580a9a3084aa3b13b6c3d91322d8577a475724b0a6629a7a735b453189be127"
+      },
+      "columns": [
+        "flight_id",
+        "aircraft_id",
+        "origin",
+        "destination",
+        "departure_time",
+        "_lineno",
+        "src",
+        "dst",
+        "start_slot",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 50,
+      "sample_rows": [
+        "F0000001,AC000001,VHHH,RCTP,2019-06-01 02:15:47+06:00,2,VHHH,RCTP,9,450.0",
+        "F0000002,AC000002,RJBB,RJFF,2019-06-01 04:00:32+06:00,3,RJBB,RJFF,16,430.0"
+      ],
+      "sha256": "a66a563c4db2b14a78208c08ddeabec5555a87c2d62c4092d31c50e58676dee8",
+      "sha256_sorted": "739cd26774b217b5e2e8eb7f4e1f4fc5d0ac1705f93bf68aa7398fbc1f587828"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S50_42/run_config.json": {
+      "bytes": 284,
+      "kind": "json",
+      "sha256": "6d35c46316f3f74a5f08bd667e35554eb9accf560d76ef11d689e85a79ec9e90"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/manifest.json": {
+      "bytes": 1127,
+      "kind": "json",
+      "sha256": "6ac174229364949b00a0f68af5a6e56c2e1260d19e8c9dbe3a771b75fe5b6d11"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/airport_bins.csv": {
+      "bytes": 15904,
+      "cols": 3,
+      "column_sha256": {
+        "bin": "21b25d5f3c80172b2fd957994e99e9a0774b73caa473b9e62d42daae32fa080d",
+        "origin": "da639d220d6c58b22b787b2e49480928fab9b64453b5459e4c2355f5b0533487",
+        "rate": "93846e124bbdb5403c2678bce499765e9b1b70672c1831fd30b6c02677bf2fd3"
+      },
+      "columns": [
+        "origin",
+        "bin",
+        "rate"
+      ],
+      "kind": "csv",
+      "rows": 768,
+      "sample_rows": [
+        "RCKH,0,0.0",
+        "RCKH,1,0.0"
+      ],
+      "sha256": "828ab2aead52b557f16e3c21694755d17a03eceb7cef1793f0418a097a03acca",
+      "sha256_sorted": "e3a1cfa0cf20978fffabf74ba141ffe21f2ce97a74f93cf73d8a9326eeb90fe4"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/global_dest_freq.csv": {
+      "bytes": 218,
+      "cols": 2,
+      "column_sha256": {
+        "destination": "1c630309dde5c1de56084b6560f3c6897b8d779c72ac4ed94b31d5b99ce1ed05",
+        "freq": "6cdea000990d5c6faaceed4d1f6a05abdb5d55352f05ecf74616e19b1271976f"
+      },
+      "columns": [
+        "destination",
+        "freq"
+      ],
+      "kind": "csv",
+      "rows": 8,
+      "sample_rows": [
+        "RCKH,0.04759642036905045",
+        "RCTP,0.16060822047992399"
+      ],
+      "sha256": "b226bf173f0db6d1a11c95e6f6c7aabd010d6a68e8ddb60952f1b4a6cc1a6211",
+      "sha256_sorted": "cd232bed00ddfde863254021cc0fac5640c81b6da621fbb7b2bf4ef18c4e0d8f"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/metadata.csv": {
+      "bytes": 54,
+      "cols": 2,
+      "column_sha256": {
+        "artifact": "16c665eba5bbf421bdf13d0cb0eae1e9ff8b1eee497acd97860cb4f0683e33fe",
+        "bin_minutes": "c5fb24bcbbc9ab48a55e66bf544f9c58bbdecdcacc870ae129a9db408f90dd8f"
+      },
+      "columns": [
+        "artifact",
+        "bin_minutes"
+      ],
+      "kind": "csv",
+      "rows": 2,
+      "sample_rows": [
+        "airport_bins,15",
+        "od_time_model,15"
+      ],
+      "sha256": "fc7c1e3bef5939bb37e7e47c4394dd65fc26d2ec95117aa90a392590a73289b2",
+      "sha256_sorted": "34ebc4e3803642a0177ce9bdf4a572659b89cbf77fea119a7d3647ae72cc2619"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/od_dur_dist.csv": {
+      "bytes": 358816,
+      "cols": 4,
+      "column_sha256": {
+        "destination": "58714b4e18cb32a89173ce4d3105e00275129d4160e25ebf21fb40207a429fe2",
+        "duration_min": "01012058d3d00630343dbab1b8112af3cee61097ab9cc9c332d8dcbca8d31d37",
+        "origin": "b6c0680713f1c7e62da4f7efe701b6087faf6c110415f37ffcbff861d244349a",
+        "speed_kts": "d414adcad13b609e10f1192adc558a19bcf45092ddb2f73a68422ba6a91bfe8e"
+      },
+      "columns": [
+        "origin",
+        "destination",
+        "duration_min",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 12621,
+      "sample_rows": [
+        "RCKH,RCTP,29.783333333333335,430",
+        "RCKH,RCTP,32.916666666666664,430"
+      ],
+      "sha256": "0d35ff9a214197351582295e7ff05274d5c3e7a5aab2f13961b7693acb3262bf",
+      "sha256_sorted": "efc08a76de2b918ffd23221d98126f17c1cc06c83551cd591a6aa19493606214"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/od_time_model.csv": {
+      "bytes": 50959,
+      "cols": 4,
+      "column_sha256": {
+        "bin": "42b617a5312522fea9dae7fb78411aea7fd7ee066c5cea9e07d279ce9d0a1561",
+        "destination": "511368fa8376d162326848d06d30ed255c55d5835a16a8025823177e6b7d5973",
+        "origin": "5dfef176d93e10da2777558f1490e56005b5377c49a8393db0be6087b1688924",
+        "prob": "f387265251ee4138c605b6c460ff96e4605ab96fe0d70dc08ae30fa7f9ae15c8"
+      },
+      "columns": [
+        "origin",
+        "bin",
+        "destination",
+        "prob"
+      ],
+      "kind": "csv",
+      "rows": 1753,
+      "sample_rows": [
+        "RCKH,19,RKSI,1.0",
+        "RCKH,20,RJBB,0.8589743589743589"
+      ],
+      "sha256": "5d937f53b6a94cf3a9b2093e863e778846b3f9edf2ffcd504193d52a85ca56a4",
+      "sha256_sorted": "c2ec2095dd2aa8bad900a0662e9544f1565eb1f99faa025441b516f0175822e9"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/run_config.json": {
+      "bytes": 1127,
+      "kind": "json",
+      "sha256": "95ac5ef6f16338aecfd66d79dfc09c7dae9d4d6e20766552f7087182dadb277d"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/model/tat_dist.csv": {
+      "bytes": 1222,
+      "cols": 1,
+      "column_sha256": {
+        "tat_min": "01f3b24e811da8317ab58d5b1f61a66c13e83a747053c97bee6aa715f5b54cd1"
+      },
+      "columns": [
+        "tat_min"
+      ],
+      "kind": "csv",
+      "rows": 84,
+      "sample_rows": [
+        "53.56666666666667",
+        "59.766666666666666"
+      ],
+      "sha256": "1a94f3b63fcaa0666bfb809925aae0564c80710a3df810594af92d6655678cdc",
+      "sha256_sorted": "1c4e737354e04634ceaa835c394dc73fa4043588291e451627f47ad919299950"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/edges.csv": {
+      "bytes": 1714,
+      "cols": 3,
+      "column_sha256": {
+        "D": "3a831d35f539d1578dc1a50eb477c46dd931426b81e4eeaa578a0a55b81a6571",
+        "V0": "3e88b26a52eb0db3a0df4e163e0c291f5d500989b70e4cf1d69bddae91621fea",
+        "V1": "1a0cc6f26da09269e1ab1af43d1514ef14f9ed38b93d06632b5e607612419d77"
+      },
+      "columns": [
+        "V0",
+        "V1",
+        "D"
+      ],
+      "kind": "csv",
+      "rows": 28,
+      "sample_rows": [
+        "GRID_EAST-ASIA_Y00X00_FL100,GRID_EAST-ASIA_Y00X01_FL100,1351188.334",
+        "GRID_EAST-ASIA_Y00X00_FL100,GRID_EAST-ASIA_Y01X00_FL100,993085.935"
+      ],
+      "sha256": "0a2ae5e30224b18d490d5042a04780b137d37741bb41a64216acbd65ad682751",
+      "sha256_sorted": "6d23b50dfb9fca047e098ba5dc0b557973cd03bea4ed478fd884a583ace35782"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/navaid_sector_assignment.csv": {
+      "bytes": 598,
+      "cols": 2,
+      "column_sha256": {
+        "Navaid_ID": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6",
+        "Sector_ID": "68ba312a006730f8a96583e8cb6533ac59da5d754e498c7bd52ef45f43e08583"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "RCKH,SECTOR_AIRPORT_RCKH",
+        "RCTP,SECTOR_AIRPORT_RCTP"
+      ],
+      "sha256": "f4f023446d89a6b98b976f3ab5a6c048e3d12567c71a38073b57b083674e93e8",
+      "sha256_sorted": "46dac09ca38f393bd42d73b1bb3660d19a9ed919371156d6d672171cb6275e57"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/run_config.json": {
+      "bytes": 1157,
+      "kind": "json",
+      "sha256": "e6ad266548d297ecbabca94d84c2fbfcbdf0ba4a1ee2cb3cbb5813d9e21b0290"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/sectors.csv": {
+      "bytes": 377,
+      "cols": 2,
+      "column_sha256": {
+        "Capacity": "38bc7f3a0808b7c124568e8bcbd0ffa58541a0daf46cf728ce2d137f3a9e5e4a",
+        "Sector_ID": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6"
+      },
+      "columns": [
+        "Sector_ID",
+        "Capacity"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "RCKH,60000",
+        "RCTP,60000"
+      ],
+      "sha256": "3d9710263066fdb6ddbdbb2edcace329d78f241af7506da4f040d4f7a45834f9",
+      "sha256_sorted": "2d763ff970f5808337dea0c029d20cdf8eb09bb8f195d5bd26ba064bafd23bc5"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/vertices.csv": {
+      "bytes": 947,
+      "cols": 5,
+      "column_sha256": {
+        "ALTITUDE": "76d3a2a20210304eba86664c5cc272e510bf74dc37dcde2a37c2cdfabb1d13eb",
+        "IDENTIFIER": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6",
+        "IS_AIRPORT": "e316e48e63849c82fda69363951a8c52ae0a1c65ea5586db7df6ea4d40d46f6c",
+        "LAT": "6ab244923506b81e77cae9376ee40e2c15264dd62652b444101ee830f7eaf524",
+        "LON": "b4c79cd11e3d155683bb9f5a1b454d3c28bbcb8b7202970b164de32622564324"
+      },
+      "columns": [
+        "IDENTIFIER",
+        "LAT",
+        "LON",
+        "ALTITUDE",
+        "IS_AIRPORT"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "RCKH,22.577101,120.349998,0.0,1",
+        "RCTP,25.0777,121.233002,0.0,1"
+      ],
+      "sha256": "7ec329be3e5fec2afaf2460726f7cbb7b3e9f5867427bce9c03276d1fffe42c4",
+      "sha256_sorted": "c445d0c5788c7f7530ae7c820e5c3ec8c863825be47ee6ee76696eb85ca4cc1d"
+    }
+  },
+  "label": "ea3x3_tg4",
+  "manifest_version": 1,
+  "normalisation": [
+    "json:absolute-path-values -> '<ABS>/<basename>' (out-root, csv-path and per-dataset directories are run-location, not generator output)",
+    "all files: CRLF/CR line endings -> LF"
+  ]
+}
