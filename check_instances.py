@@ -364,7 +364,10 @@ def main() -> int:
         for ds in datasets:
             name = label(ds, root)
             n = check_dataset(ds, tg, rep, name)
-            by_experiment[str(Path(name).parent)] += n
+            # group by the directory holding the instance; when the user pointed
+            # straight at one instance there is no group, so use its own name
+            group = str(Path(name).parent)
+            by_experiment[name if group == "." else group] += n
             if a.verbose:
                 print(f"    {'FAIL' if n else 'PASS'}  {name}"
                       + (f"  {n} violations" if n else ""))
