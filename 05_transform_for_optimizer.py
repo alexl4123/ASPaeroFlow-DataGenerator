@@ -43,6 +43,8 @@ import argparse
 import json
 from pathlib import Path
 from typing import Dict, Tuple, List
+
+import stage_interfaces
 import pandas as pd
 import numpy as np
 import sys
@@ -450,10 +452,33 @@ def parse_args() -> argparse.Namespace:
                         "Default: basename of --in-exp-dir.")
     p.add_argument("--select", type=str, default="DATA_*",
                    help="Glob to choose which data subfolders to convert (default: DATA_*)")
+    # Swappable stage implementation (see stage_interfaces.py). This stage is its own
+    # entry point, so it carries its own selector instead of run_pipeline's STAGE=SPEC form.
+    p.add_argument("--stage-impl", type=str, default=None, metavar="SPEC",
+                   help="Use an alternative transform implementation: a registered name "
+                        "('default'), 'module:ClassName' or 'path/to/file.py:ClassName'. The "
+                        "class must subclass stage_interfaces.TransformStage. "
+                        "'transform=SPEC' is accepted too, to match run_pipeline.py.")
     return p.parse_args()
 
 def main():
     a = parse_args()
+
+    spec = a.stage_impl
+    if spec and spec.startswith("transform="):
+        spec = spec.split("=", 1)[1]
+    if spec and spec != "default":
+        impl = stage_interfaces.load("transform", spec)
+        print(f"[stage-impl] transform: {spec} -> {type(impl).__name__}")
+        # Hand the implementation the canonical argv for this stage, exactly as
+        # run_pipeline hands one to stages 00-04: values resolved, defaults filled in.
+        argv = ["--in-exp-dir", str(a.in_exp_dir),
+                "--out-root", str(a.out_root),
+                "--select", str(a.select)]
+        if a.experiment_name:
+            argv += ["--experiment-name", str(a.experiment_name)]
+        impl.start(argv)
+        return
 
     exp_in = a.in_exp_dir
     if not exp_in.exists():

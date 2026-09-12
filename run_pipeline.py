@@ -32,6 +32,12 @@ import os, shlex, subprocess
 import sys
 import shutil
 
+import stage_interfaces
+
+# Stages driven from here.  'transform' (stage 05) is selected on
+# 05_transform_for_optimizer.py, which is its own entry point.
+PIPELINE_STAGES = ("model", "flights", "navgraph", "sectors", "filedplans")
+
 # -------------------------
 # utils
 # -------------------------
@@ -255,6 +261,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--force-rebuild-model", type=str, default=C("force-rebuild-model", "false"))
     p.add_argument("--force-rebuild-graph", type=str, default=C("force-rebuild-graph", "false"))
 
+    # Swappable stage implementations (see stage_interfaces.py)
+    p.add_argument("--stage-impl", action="append", default=None, metavar="STAGE=SPEC",
+                   help="Use an alternative implementation for one stage. STAGE is one of "
+                        + ", ".join(PIPELINE_STAGES) +
+                        ". SPEC is a registered name ('default'), 'module:ClassName' or "
+                        "'path/to/file.py:ClassName'; the class must subclass the stage's "
+                        "interface in stage_interfaces.py. Repeatable, e.g. "
+                        "--stage-impl navgraph=my_graph:MyGraphStage. Omit it and every stage "
+                        "uses the shipped default.")
+
     args = p.parse_args()
 
     # normalize booleans
@@ -284,6 +300,10 @@ def parse_args() -> argparse.Namespace:
 def main():
     a = parse_args()
 
+    # Resolve the stage implementations before anything is written: a bad
+    # --stage-impl must fail before the run starts, not halfway through it.
+    impls = stage_interfaces.load_all(a.stage_impl, PIPELINE_STAGES)
+
     a.out_root.mkdir(parents=True, exist_ok=True)
 
     sim_day = a.day or a.target_day or a.date_start
@@ -311,7 +331,6 @@ def main():
     ])
     if model_needed:
         cmd = [
-            "python", "00_model_generation_script_refactored.py",
             "--csv-path", str(a.csv_path),
             "--ourairports-path", str(a.ourairports),
             "--chunksize", str(a.model_chunksize),
@@ -334,7 +353,7 @@ def main():
         if a.airport_types:
             cmd += ["--airport-types", str(a.airport_types)]
 
-        run(cmd)
+        impls["model"].start(cmd)
     else:
         print("[SKIP] Model artifacts present → step 1 skipped.")
    
@@ -346,7 +365,6 @@ def main():
     ])
     if graph_needed:
         cmd = [
-            "python", "02_graph_generator.py",
             "--ourairports", str(a.ourairports),
             "--navdir", str(a.navdir),
             "--criterion", a.criterion,
@@ -393,7 +411,7 @@ def main():
         #    if file_exists(od_file):
         #        cmd += ["--od-file", str(od_file)]
 
-        run(cmd)
+        impls["navgraph"].start(cmd)
     else:
         print("[SKIP] Navgraph present → step 3 skipped.")
  
@@ -405,8 +423,7 @@ def main():
         file_exists(nav_dir / "sectors.csv"),
     ])
     if graph_needed:
-        run([
-            "python", "03_sector_capacity_generator.py",
+        impls["sectors"].start([
             "--path", str(nav_dir),
             "--cap-enroute", str(a.cap_enroute),
             "--cap-airport", str(a.cap_airport),
@@ -465,8 +482,7 @@ def main():
             size_arg = ["--flights",str(first_scale)]
         else:
             size_arg = ["--scale",str(first_scale)]
-        run([
-            "python", "01_data_generation_script_refactored.py",
+        impls["flights"].start([
             "--model-dir", str(model_dir),
             "--day", sim_day,
             "--seed", str(first_seed),
@@ -503,8 +519,7 @@ def main():
 
         print(f"[5/{idx+1}/Data] Generating data: scale={scale:g}, seed={seed}")
         if data_needed:
-            run([
-                "python", "01_data_generation_script_refactored.py",
+            impls["flights"].start([
                 "--model-dir", str(model_dir),
                 "--seed", str(seed),
                 "--day", sim_day,
@@ -531,8 +546,7 @@ def main():
             print(f"[5/{idx+1}/Trajectory] Generating filed plans for {ds_dir.name}")
             if trajectory_needed:
                 # Filed flight plans (always ensure present)
-                run([
-                    "python", "04_simplified_filed_flight_plan_generator.py",
+                impls["filedplans"].start([
                     "--data-dir", str(ds_dir),
                     "--navgraph-dir", str(nav_dir),
                     "--time-granularity", str(a.time_granularity),
