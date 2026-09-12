@@ -176,8 +176,8 @@ $ python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3
 [RUN] python 03_sector_capacity_generator.py --path /tmp/demo/... --cap-enroute 1 ...
 ```
 
-Its output is byte-identical to a run without the flag — `tests/regression/fingerprint.py` on
-both trees reports `RESULT: MATCH`, 27 files, 0 changed. `FlatCapacitySectors` in the same file
+Its output is byte-identical to a run without the flag — fingerprint both trees with
+`tests/regression/fingerprint.py` and `compare.py` reports `RESULT: MATCH`, 27 files, 0 changed. `FlatCapacitySectors` in the same file
 is a real substitution: it runs the default for the clustering, then gives every sector
 `--cap-enroute`, so airport sectors drop from 60000 to 1 and that change reaches the parsed
 instance.
