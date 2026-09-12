@@ -54,6 +54,7 @@ Then, optionally:
 | `06_bluesky_converter.py` | export to BlueSky |
 | `07_check_parsed_experiments_graph_connectedness.py` | sanity check on parsed output |
 | `build_release_zips.py` | assembles the release archives, materialising every capacity level |
+| `check_instances.py` | **validity checks on a generated instance** — window, adjacency, aircraft separation, sector cover; see below |
 
 ### Running it
 
@@ -115,6 +116,159 @@ instances begin and end with empty airspace.
 stage 01, not stage 04 — delete the `DATA_*` directories first. Note also that `run_pipeline.run()`
 captures subprocess output and prints it only on failure, so stage 04's `[OK] …` confirmation line
 never appears in a successful pipeline log. Judge success by the exit code.
+
+---
+
+## Swapping a stage for your own implementation
+
+Each stage has a parent class in `stage_interfaces.py` with one required method, `start(argv)`.
+The shipped scripts are registered as that stage's `default`, so **nothing changes unless you ask
+for something else**. To use your own trajectory generator, graph builder or capacity rule,
+subclass the stage's parent class and name it on the command line.
+
+| stage | key | parent class | default implementation |
+|---|---|---|---|
+| 00 demand model | `model` | `DemandModelStage` | `00_model_generation_script_refactored.py` |
+| 01 flight schedule | `flights` | `FlightScheduleStage` | `01_data_generation_script_refactored.py` |
+| 02 navigation graph | `navgraph` | `NavigationGraphStage` | `02_graph_generator.py` |
+| 03 sectors and capacities | `sectors` | `SectorCapacityStage` | `03_sector_capacity_generator.py` |
+| 04 filed flight plans | `filedplans` | `FiledFlightPlanStage` | `04_simplified_filed_flight_plan_generator.py` |
+| 05 transform | `transform` | `TransformStage` | `05_transform_for_optimizer.py` |
+
+Each parent class's docstring **is the contract**: the files an implementation must write, the
+columns they carry, and the invariants it must respect. Read it before writing one — nothing
+validates your output until `check_instances.py` runs at the end.
+
+```bash
+# stages 00-04, on the pipeline driver.  Repeatable; STAGE=SPEC.
+python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \
+    --stage-impl sectors=example_stage_impls:FlatCapacitySectors
+
+# stage 05 is its own entry point, so it carries its own selector (SPEC only)
+python 05_transform_for_optimizer.py --in-exp-dir unparsed_experiment_data_.../<REGION> \
+    --out-root experiment_data_... --stage-impl my_transform:MyTransform
+```
+
+`SPEC` is a registered name (`default`), `module:ClassName`, or `path/to/file.py:ClassName`. The
+class must subclass that stage's parent class; anything else is rejected before the run starts,
+with an error naming the interface it had to implement.
+
+### Worked example
+
+`example_stage_impls.py` ships two alternative stage 03 implementations and one alternative
+stage 05. The smallest one just calls the default:
+
+```python
+class LoggingSectors(SectorCapacityStage):
+    def start(self, argv):
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingSectors: navgraph={opts.get('path')} ...")
+        DefaultSectorCapacity().start(argv)
+```
+
+```
+$ python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \
+      --out-root /tmp/demo --flight-flights 10 --flight-seeds 42 \
+      --stage-impl sectors=example_stage_impls:LoggingSectors
+[stage-impl] sectors: example_stage_impls:LoggingSectors -> LoggingSectors
+...
+[example] LoggingSectors: navgraph=/tmp/demo/30-0-EAST-ASIA-3x3-V2/navgraph cap-enroute=1 cap-airport=60000
+[RUN] python 03_sector_capacity_generator.py --path /tmp/demo/... --cap-enroute 1 ...
+```
+
+Its output is byte-identical to a run without the flag — `tests/regression/fingerprint.py` on
+both trees reports `RESULT: MATCH`, 27 files, 0 changed. `FlatCapacitySectors` in the same file
+is a real substitution: it runs the default for the clustering, then gives every sector
+`--cap-enroute`, so airport sectors drop from 60000 to 1 and that change reaches the parsed
+instance.
+
+### Traps
+
+* `start(argv)` receives the **canonical argv** for the stage — the exact argument list the
+  default would pass to its script, with config-file values and defaults already resolved.
+  Conditional flags (`--config`, `--date-start`, …) are simply absent when unset. Use
+  `stage_interfaces.argv_to_dict(argv)` if you want a mapping.
+* **Write your artefacts where argv says** (`--out-dir`, `--path`, `--data-dir`). `run_pipeline`
+  skips a stage whose artefacts already exist and looks for them at exactly those paths.
+* Run from the repository root. The default implementations spawn `python <NN_stage>.py` with no
+  path, exactly as the pipeline always has.
+* `manifest.json` does **not** record which implementation ran. Nothing in the generated output
+  distinguishes a substituted stage from the default; track that yourself.
+
+---
+
+## Checking an instance you generated
+
+`check_instances.py` answers one question about a **parsed** instance: is it well formed enough
+for a solver to consume? Point it at an instance directory, an experiment, or a whole parsed root.
+
+```bash
+python check_instances.py experiment_data_V2_small_scaling
+python check_instances.py experiment_data_.../<REGION>/0000100_SEED42 --verbose
+```
+
+```
+$ python check_instances.py experiment_data_V2_small_scaling
+experiment_data_V2_small_scaling
+  time granularity : TG=1  (window = 24 timesteps, from .../30-0-EAST-ASIA-3x3-V2/manifest.json)
+  instances        : 200
+    PASS  30-0-EAST-ASIA-3x3-V2
+    PASS  30-1-CENTRAL-EUROPE-5x5-V2
+    PASS  30-2-INDIA-4x10-V2
+    PASS  30-3-USA-7x7-V2
+    PASS  30-4-MAJOR-EUROPE-10x10-V2
+
+--- reported, not failed -------------------------------------------
+  P3-clamp  flights ending on the window edge: mean 6.2% [0.0%-23.8%]
+  D5        sectors ever over capacity:        mean 31.5% [0.0%-45.5%]
+
+ALL CHECKS PASSED: 200 instance(s)
+```
+
+Exit code 0 = all passed, 1 = violations, 2 = usage error, so it gates a generation run directly.
+
+| check | what it requires |
+|---|---|
+| `P1` | every required file is present |
+| `P2`/`F9` | distinct flight count == the number in the directory name |
+| `P3`/`F1` | every timestep in `[0, TG × 24]` (`P3` the upper bound, `P3b` departures before t=0) |
+| `F3` | no single waypoint-to-waypoint gap exceeds the whole window |
+| `P4`/`F6` | every sector capacity ≥ 1 — 0 is unsatisfiable by construction |
+| `P5`/`D6`/`F6` | every graph vertex has a sector; every sector used is declared |
+| `P6`/`F2` | each flight's `Time` strictly increases |
+| `D2` | one position per (flight, timestep) |
+| `P6b`/`F6` | every `Position` is a declared navaid |
+| `P7` | every airport vertex is on the graph |
+| `P8`/`F5` | every flight has exactly one airplane, and it is declared |
+| `D1`/`F8` | consecutive positions are graph-adjacent — no teleporting |
+| `D3`/`F7` | flights start and end at airport vertices |
+| `C4` | no flight returns to its origin airport |
+| `D4`/`F4` | two legs of one airframe are ≥ 1 timestep apart |
+| `P9` | `transform_manifest.json` agrees with the directory name |
+
+The identifiers are the ones used in `dataset_analysis_JOAS/00_generator_integrity/` and the dev
+log — `P4` here is that `P4`. Where two scripts named the same predicate differently they are
+reported together (`D4`/`F4` is one check, not two).
+
+Two things are **reported and never fail**, because both are properties of the benchmark rather
+than defects:
+
+| reported | why not a failure |
+|---|---|
+| `P3-clamp` | share of flights ending exactly on the window edge. At TG=1 the one-slot-per-edge cost consumes the window on larger graphs; accepted and documented (`FUTURE_WORK.md` §D1) |
+| `D5` | share of sectors ever over capacity. An ATFCM instance is *meant* to exceed capacity — that imbalance is the problem. A **zero** here means the instance is trivially feasible, which is the suspicious case — except on a `PCAP100` overlay, where zero overload *is* the definition of nominal capacity |
+
+### Traps
+
+* It reads the **parsed** tree only. The demand and OD audits, and the unparsed-tree checks
+  `C1`–`C3`, `C5`–`C8`, need `model/` and `DATA_*/`, which stage 05 does not carry forward; they
+  stay in `dataset_analysis_JOAS/00_generator_integrity/`.
+* **`TG` is not recorded in the instance.** The checker takes it from the generator's
+  `manifest.json` if the unparsed experiment is still on this machine, else from a `TG<n>` in the
+  path, else assumes 1 — and prints which. `P3` is meaningless if that guess is wrong, so pass
+  `--time-granularity` when checking instances you moved off the generating machine.
+* It checks validity, not fidelity. Nothing here says an instance resembles real traffic; that is
+  what `dataset_analysis_JOAS/` is for.
 
 ---
 
