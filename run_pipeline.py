@@ -302,7 +302,11 @@ def main():
 
     # Resolve the stage implementations before anything is written: a bad
     # --stage-impl must fail before the run starts, not halfway through it.
-    impls = stage_interfaces.load_all(a.stage_impl, PIPELINE_STAGES)
+    try:
+        impls = stage_interfaces.load_all(a.stage_impl, PIPELINE_STAGES)
+    except stage_interfaces.StageImplError as exc:
+        print(f"[FATAL] --stage-impl: {exc}", file=sys.stderr)
+        raise SystemExit(2)
 
     a.out_root.mkdir(parents=True, exist_ok=True)
 

@@ -468,7 +468,11 @@ def main():
     if spec and spec.startswith("transform="):
         spec = spec.split("=", 1)[1]
     if spec and spec != "default":
-        impl = stage_interfaces.load("transform", spec)
+        try:
+            impl = stage_interfaces.load("transform", spec)
+        except stage_interfaces.StageImplError as exc:
+            print(f"[FATAL] --stage-impl: {exc}", file=sys.stderr)
+            raise SystemExit(2)
         print(f"[stage-impl] transform: {spec} -> {type(impl).__name__}")
         # Hand the implementation the canonical argv for this stage, exactly as
         # run_pipeline hands one to stages 00-04: values resolved, defaults filled in.
