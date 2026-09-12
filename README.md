@@ -54,6 +54,7 @@ Then, optionally:
 | `06_bluesky_converter.py` | export to BlueSky |
 | `07_check_parsed_experiments_graph_connectedness.py` | sanity check on parsed output |
 | `build_release_zips.py` | assembles the release archives, materialising every capacity level |
+| `write_instance_info.py` | writes `instance_info.json` into every instance, so an extracted directory is self-describing; `--verify-zip` checks it reproduces a published archive exactly |
 | `check_instances.py` | **validity checks on a generated instance** — window, adjacency, aircraft separation, sector cover; see below |
 
 ### Running it
