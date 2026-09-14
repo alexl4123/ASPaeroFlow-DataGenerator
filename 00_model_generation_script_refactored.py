@@ -56,6 +56,7 @@ import numpy as np
 import pandas as pd
 import sys
 from stage_interfaces import DemandModelStage
+from atomic_io import atomic_to_csv, atomic_open
 
 
 def parse_airport_include_spec(spec: str | None) -> set[str] | None:
@@ -614,7 +615,7 @@ def save_artifacts(
         .melt(id_vars="origin", var_name="bin", value_name="rate")
         .sort_values(["origin","bin"], kind="mergesort")
     )
-    bins_long.to_csv(out_dir / "airport_bins.csv", index=False)
+    atomic_to_csv(bins_long, out_dir / "airport_bins.csv", index=False)
 
     # od_time_model: explode (origin, bin) → rows of (dest, prob)
     rows = []
@@ -623,10 +624,10 @@ def save_artifacts(
             for d, p in zip(dests, probs):
                 rows.append((o, b, d, float(p)))
     odm = pd.DataFrame(rows, columns=["origin","bin","destination","prob"]).sort_values(["origin","bin","destination"])
-    odm.to_csv(out_dir / "od_time_model.csv", index=False)
+    atomic_to_csv(odm, out_dir / "od_time_model.csv", index=False)
 
     # tat_dist
-    pd.DataFrame({"tat_min": tat_dist}).to_csv(out_dir / "tat_dist.csv", index=False)
+    atomic_to_csv(pd.DataFrame({"tat_min": tat_dist}), out_dir / "tat_dist.csv", index=False)
 
     # od_dur_dist with speed_kts via global tertiles
     q33, q66 = dur_tertiles
@@ -641,11 +642,11 @@ def save_artifacts(
         for v in arr:
             rows.append((o, d, float(v), int(duration_to_speed_kts(float(v)))))
     odd = pd.DataFrame(rows, columns=["origin","destination","duration_min","speed_kts"]).sort_values(["origin","destination","duration_min"])
-    odd.to_csv(out_dir / "od_dur_dist.csv", index=False)
+    atomic_to_csv(odd, out_dir / "od_dur_dist.csv", index=False)
 
     # global_dest_freq
     gdf = global_dest_freq.rename("freq").reset_index().rename(columns={"index":"destination"})
-    gdf.to_csv(out_dir / "global_dest_freq.csv", index=False)
+    atomic_to_csv(gdf, out_dir / "global_dest_freq.csv", index=False)
 
     # Optional metadata (useful for traceability)
     meta = pd.DataFrame(

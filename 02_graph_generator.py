@@ -65,6 +65,7 @@ import pandas as pd
 import networkx as nx
 import sys
 from stage_interfaces import NavigationGraphStage
+from atomic_io import atomic_to_csv, atomic_open
 
 # -------------------------
 # Helpers: progress
@@ -956,11 +957,11 @@ def write_vertices_csv(df: pd.DataFrame, out_dir: Path):
                 df = df.assign(IS_AIRPORT=0)
             else:
                 raise ValueError(f"vertices.csv missing required column: {c}")
-    df.to_csv(p, index=False, columns=cols)
+    atomic_to_csv(df, p, index=False, columns=cols)
 
 def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path, idents: List[str]):
     p = out_dir / "edges.csv"
-    with open(p, "w", newline="", encoding="utf-8") as f:
+    with atomic_open(p, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["V0","V1","D"])
         for i,j,d in edges:

@@ -31,6 +31,7 @@ import pandas as pd
 import random
 import sys
 from stage_interfaces import FlightScheduleStage
+from atomic_io import atomic_to_csv, atomic_open
 
 
 # -------------------------
@@ -496,10 +497,10 @@ class FlightScheduleSampler(FlightScheduleStage):
         )
 
         # choose how you want to serialize (seconds precision here)
-        flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")
+        atomic_to_csv(flights_df, out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")
 
         aircrafts_path = exp_dir / "aircrafts.csv"
-        aircrafts_df.to_csv(aircrafts_path, index=False)
+        atomic_to_csv(aircrafts_df, aircrafts_path, index=False)
 
         print(f"Wrote {len(flights_df):,} flights to {str(out_flights)}")
         print(f"Wrote {len(aircrafts_df):,} aircraft rows to {aircrafts_path.resolve()}")

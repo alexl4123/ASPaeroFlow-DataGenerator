@@ -26,6 +26,7 @@ from collections import deque
 import pandas as pd
 import networkx as nx
 from stage_interfaces import SectorCapacityStage
+from atomic_io import atomic_to_csv, atomic_open
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate sectors.csv with per-vertex capacities.")
@@ -349,7 +350,7 @@ class SectorCapacityGenerator(SectorCapacityStage):
 
 
         nsdf_path = args.path / "navaid_sector_assignment.csv"
-        nsdf.to_csv(nsdf_path, index=False)
+        atomic_to_csv(nsdf, nsdf_path, index=False)
 
         print("[4/4] Writing sectors.csv (atomic capacities)...")
 
@@ -361,7 +362,7 @@ class SectorCapacityGenerator(SectorCapacityStage):
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        out_df.to_csv(out_path, index=False)
+        atomic_to_csv(out_df, out_path, index=False)
         print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()} and {len(nsdf):,} rows to {nsdf_path.resolve()}")
 
 

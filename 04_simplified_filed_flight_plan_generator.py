@@ -53,6 +53,7 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from stage_interfaces import FiledFlightPlanStage
+from atomic_io import atomic_to_csv, atomic_open, atomic_group
 
 
 # -------------------------
@@ -763,17 +764,20 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
             assert df["Time"].min() >= 0 and df["Time"].max() <= max_time, "contract guard failed"
         print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}].")
 
-        out_path = args.data_dir / "filed_flights.csv"
-        df.to_csv(out_path, index=False)
-    
-        out_path = args.data_dir / "flights.csv"
-        flights.to_csv(out_path, index=False)
+        # All three land together or none do.  run_pipeline's guard for this stage
+        # checks only filed_flights.csv, while flights.csv and aircrafts.csv already
+        # exist from stage 01 -- so a stage that wrote the first and died would be
+        # skipped on a re-run, leaving a filed plan beside an un-rewritten flights.csv.
+        with atomic_group() as group:
+            out_path = args.data_dir / "filed_flights.csv"
+            group.to_csv(df, out_path, index=False)
 
-        out_path = args.data_dir / "aircrafts.csv"
-        with open(out_path, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["aircraft_id", "speed_kts"])
-            writer.writerows(aircraft_speed.items())
+            group.to_csv(flights, args.data_dir / "flights.csv", index=False)
+
+            with group.open(args.data_dir / "aircrafts.csv", mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["aircraft_id", "speed_kts"])
+                writer.writerows(aircraft_speed.items())
 
         print(f"Done. Wrote {len(df):,} trajectory rows to {out_path.resolve()}")
 
