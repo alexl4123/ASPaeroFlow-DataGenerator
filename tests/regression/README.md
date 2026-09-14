@@ -44,7 +44,7 @@ content differences**.
 
 ### The specific cause
 
-`04_simplified_filed_flight_plan_generator.py:613`
+`04_simplified_filed_flight_plan_generator.py:634`
 
 ```python
 for aircraft in list(set(flights["aircraft_id"])):
@@ -54,11 +54,13 @@ This iterates a Python `set` of `str`. CPython randomises `str.__hash__` per pro
 unless `PYTHONHASHSEED` is set, so the order in which aircraft are visited changes from
 run to run. The loop body creates split-aircraft ids (`AC000007_0`, …) as new keys in
 the `aircraft_speed` dict, and that dict is written out in insertion order at the end of
-`main()`. So the visitation order becomes the row order of `aircrafts.csv`.
+`FiledFlightPlanGenerator.start` (this was the stage's `main()` until the stage scripts
+became real implementations of their interfaces). So the visitation order becomes the
+row order of `aircrafts.csv`.
 
 Only the order changes, never the values: the body filters `flights` down to the one
 aircraft it is processing, so the work done for each aircraft is independent of when it
-is visited. The later split pass (`for ac, legs in by_ac.items()`, ~line 691) iterates a
+is visited. The later split pass (`for ac, legs in by_ac.items()`, ~line 713) iterates a
 `defaultdict` and is insertion-ordered, hence already deterministic.
 
 `run_fixtures.sh` exports `PYTHONHASHSEED=0` so the check is the strong one — exact
@@ -227,7 +229,7 @@ provides `python3` will run the stages under the wrong interpreter.
 
 ## Proof that the harness catches a real change
 
-`02_graph_generator.py:112` was temporarily changed from
+`02_graph_generator.py:114` was temporarily changed from
 
 ```python
 EARTH_R_M = 6371008.8  # mean Earth radius (meters)
