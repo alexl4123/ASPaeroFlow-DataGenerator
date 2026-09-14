@@ -436,7 +436,18 @@ class FlightScheduleSampler(FlightScheduleStage):
 
         if flights_df.shape[0] <= 1:
             print(f"[WARN] - NOT ENOUGH FLIGHTS RECORDED: {flights_df.shape[0]}")
-            quit(0)
+            # Decline this dataset, do not end the run.  ``return`` reproduces exactly
+            # what the old subprocess did: nothing below runs, flights.csv is never
+            # written, and run_pipeline's `data_exists` guard therefore skips stage 04
+            # for this dataset and carries on with the next one.  It used to say
+            # ``quit(0)``, which is _sitebuiltins.Quitter: it closes sys.stdin and
+            # raises SystemExit(0).  Harmless while each stage was its own process;
+            # fatal the moment stages share the pipeline's process, where it kills the
+            # whole run *reporting success* and silently skips every remaining
+            # dataset -- measured, not guessed.  ``raise``
+            # would be the other obvious spelling, and it would be wrong too -- it
+            # would abort the run where the subprocess merely declined one dataset.
+            return
 
         args.out_dir.mkdir(parents=True, exist_ok=True)
         # --- build auto-named experiment directory ---
