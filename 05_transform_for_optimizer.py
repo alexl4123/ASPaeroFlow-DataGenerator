@@ -459,7 +459,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                    help="Use an alternative transform implementation: a registered name "
                         "('default'), 'module:ClassName' or 'path/to/file.py:ClassName'. The "
                         "class must subclass stage_interfaces.TransformStage. "
-                        "'transform=SPEC' is accepted too, to match run_pipeline.py.")
+                        "'transform=SPEC' is accepted too, to match run_pipeline.py. "
+                        "Pass 'help' to print this stage's contract and exit; "
+                        "'python run_pipeline.py --list-stage-impls' lists every stage.")
     return p.parse_args(argv)
 
 class OptimizerTransform(TransformStage):
@@ -473,9 +475,10 @@ class OptimizerTransform(TransformStage):
     Stage 05 is its own entry point, so unlike stages 00-04 it carries the
     ``--stage-impl`` selector itself; the dispatch below is that entry-point
     plumbing, and everything after it is the transform proper.
-    ``stage_interfaces.DefaultTransform`` spawns this script out of process, so
-    an alternative transform can delegate to the shipped one by instantiating
-    ``DefaultTransform``. To select this class by name instead::
+    An alternative transform delegates back to this one with
+    ``load("transform").start(argv)``; the canonical argv it is handed carries no
+    ``--stage-impl``, so the delegation runs the transform rather than
+    dispatching again. To name this class explicitly instead::
 
         python 05_transform_for_optimizer.py --in-exp-dir <dir> \
             --stage-impl 05_transform_for_optimizer.py:OptimizerTransform
@@ -487,6 +490,9 @@ class OptimizerTransform(TransformStage):
         spec = a.stage_impl
         if spec and spec.startswith("transform="):
             spec = spec.split("=", 1)[1]
+        if spec == stage_interfaces.HELP_SPEC:
+            print(stage_interfaces.contract_text("transform"))
+            return
         if spec and spec != "default":
             try:
                 impl = stage_interfaces.load("transform", spec)

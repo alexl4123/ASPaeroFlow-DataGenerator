@@ -114,9 +114,17 @@ not fit, and raises rather than silently shipping a short instance. A consequenc
 instances begin and end with empty airspace.
 
 **④ Stage 04 is NOT idempotent.** It rewrites `flights.csv`. Re-running a pipeline must start from
-stage 01, not stage 04 — delete the `DATA_*` directories first. Note also that `run_pipeline.run()`
-captures subprocess output and prints it only on failure, so stage 04's `[OK] …` confirmation line
-never appears in a successful pipeline log. Judge success by the exit code.
+stage 01, not stage 04 — delete the `DATA_*` directories first. This is not merely tidiness, and it
+is not only about `flights.csv`: a stage that fails after partially writing an artefact leaves a
+file that `run_pipeline`'s `file_exists` skip-guard will read as completed work on the next run, so
+a re-run over a tree left by a failed run can silently skip the stage that failed.
+
+**Related — stage output is no longer captured.** The pipeline used to spawn each stage as a subprocess and
+hold its stdout until the stage failed, so stage 04's `[OK] …` confirmation line never appeared in
+a successful log and you had to judge by the exit code alone. Stages now run in the pipeline's own
+process and print straight to the terminal, so that line **does** appear — interleaved with the
+pipeline's own progress lines rather than replayed in a block. The exit code is still what to gate
+on.
 
 ---
 
@@ -146,18 +154,24 @@ The class in the right-hand column is not a wrapper. It subclasses the stage's p
 its `start(argv)` is the algorithm — so the shipped stage is itself a worked example of the
 interface, and copying the script gives you something that already runs.
 
-`run_pipeline.py` reaches that code through the `Default*` adapter in `stage_interfaces.py`,
-which spawns the script as `python 02_graph_generator.py …`. That subprocess boundary is
-deliberate: it isolates each stage's memory, and it means a refactor of the generator can be
-proved output-identical because the process is launched exactly as it always was. The adapters
-are four lines each and contain no algorithm; do not read them to learn what a stage does.
-
-Both routes run the same code, and you can pick either:
+There is no adapter class in between, and no subprocess. `run_pipeline.py` resolves stage
+`navgraph` to that class and calls it directly, in its own process, so these two spellings mean
+the same thing:
 
 ```bash
---stage-impl navgraph=default                                      # spawn it (what the pipeline does)
---stage-impl navgraph=02_graph_generator.py:NavigationGraphBuilder # import it and call it in process
+--stage-impl navgraph=default                                      # what the pipeline does anyway
+--stage-impl navgraph=02_graph_generator.py:NavigationGraphBuilder # the same class, named
 ```
+
+All six stages therefore share one process. Two things follow, and both are improvements with a
+cost attached. Stage output is not captured (see convention ④ above). And a failing stage raises
+its own exception instead of arriving as a `subprocess.CalledProcessError` — the pipeline still
+exits non-zero, and the traceback now names the line that actually failed. What is lost is memory
+isolation. Measured on the `dach_gabriel_tg15` fixture — 1,508 vertices, real X-Plane waypoints,
+the memory-heaviest thing the regression suite runs — peak RSS went from **861 MiB** across six
+subprocesses to **877 MiB** in the single process: a rise of 16 MiB, or 1.8 %. (`/usr/bin/time -v`,
+`Maximum resident set size`. The before figure is the largest single stage, not the sum: GNU `time`
+reports the maximum over the process and its children.)
 
 ```bash
 # stages 00-04, on the pipeline driver.  Repeatable; STAGE=SPEC.
@@ -173,18 +187,52 @@ python 05_transform_for_optimizer.py --in-exp-dir unparsed_experiment_data_.../<
 class must subclass that stage's parent class; anything else is rejected before the run starts,
 with an error naming the interface it had to implement.
 
+### Finding out what exists, without reading the source
+
+```bash
+python run_pipeline.py --list-stage-impls        # every stage: contract, short names, examples
+python run_pipeline.py --stage-impl sectors=help # one stage's contract, in full, on stdout
+```
+
+`--list-stage-impls` prints, for each stage, the interface class whose docstring is the contract
+(with file and line), the short names that actually resolve, the shipped implementation to copy,
+and every worked example in `example_stage_impls.py`. None of it is a hand-maintained list: the
+contract and its location come from the interface class, the reference implementation from that
+class's `reference_impl` attribute, and the examples are discovered by importing
+`example_stage_impls.py` and walking `__subclasses__`. Add a class there and it appears, with its
+one-line summary, without anyone editing a table.
+
+Two frictions the listing also spells out, because they are easy to discover the hard way:
+
+* **Your implementation file is coupled to this repository.** It has to run
+  `from stage_interfaces import <Stage>Stage` to subclass the interface, so the repository must be
+  importable from wherever you run it. Run from the repository root, or put it on `PYTHONPATH`.
+* **Short names are repo-internal.** `stage_interfaces.register()` only takes effect once your
+  module has been imported, and the only way to get a module from outside this repository imported
+  is to name it `module:ClassName` — by which point the short name has nothing left to do. So
+  `register()` is not a plug-in mechanism for third parties; select outside code as
+  `module:ClassName` or `path/to/file.py:ClassName`, and treat the short names as a convenience for
+  classes this repository already imports.
+
 ### Worked example
 
-`example_stage_impls.py` ships three alternative stage 03 implementations and one alternative
-stage 05. The smallest one just calls the default:
+`example_stage_impls.py` ships one delegating implementation for **every** stage — `model`,
+`flights`, `navgraph`, `sectors`, `filedplans` and `transform` — plus two real stage 03
+substitutions. The delegating ones are the smallest possible template: announce yourself, then run
+the shipped stage through `load(<stage key>)`.
 
 ```python
 class LoggingSectors(SectorCapacityStage):
     def start(self, argv):
         opts = argv_to_dict(argv)
         print(f"[example] LoggingSectors: navgraph={opts.get('path')} ...")
-        DefaultSectorCapacity().start(argv)
+        load("sectors").start(argv)
 ```
+
+`load(key)` returns an instance of the class in the shipped script, so delegating adds a wrapper
+rather than a second copy of the algorithm. Selecting all six at once leaves the generated files
+byte-identical to a plain run — which is how the wiring is tested for stages that have no
+alternative of their own yet, trajectory generation (`filedplans`) included.
 
 ```
 $ python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \
@@ -192,17 +240,22 @@ $ python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3
       --stage-impl sectors=example_stage_impls:LoggingSectors
 [stage-impl] sectors: example_stage_impls:LoggingSectors -> LoggingSectors
 ...
+[RUN] sectors: LoggingSectors.start(--path /tmp/demo/30-0-EAST-ASIA-3x3-V2/navgraph --cap-enroute 1 --cap-airport 60000 --sector-default-navaid-size 3 --convex-sectors 1)
 [example] LoggingSectors: navgraph=/tmp/demo/30-0-EAST-ASIA-3x3-V2/navgraph cap-enroute=1 cap-airport=60000
-[RUN] python 03_sector_capacity_generator.py --path /tmp/demo/... --cap-enroute 1 ...
 ```
 
-Its output is byte-identical to a run without the flag — fingerprint both trees with
-`tests/regression/fingerprint.py` and `compare.py` reports `RESULT: MATCH`, 27 files, 0 changed. `FlatCapacitySectors` in the same file
-is a real substitution: it runs the default for the clustering, then gives every sector
+The `[RUN]` line is the pipeline announcing the canonical argv before calling the stage — the
+same provenance the old `[RUN] python 03_sector_capacity_generator.py …` line carried, naming the
+class instead of a command.
+
+`LoggingSectors`' output is byte-identical to a run without the flag — fingerprint both trees
+with `tests/regression/fingerprint.py` and `compare.py` reports `RESULT: MATCH`, 27 files,
+0 changed. `FlatCapacitySectors` in the same file is a real substitution: it runs the shipped
+stage for the clustering, then gives every sector
 `--cap-enroute`, so airport sectors drop from 60000 to 1 and that change reaches the parsed
 instance.
 
-`LatitudeBandSectors` is the one that does not lean on the default at all. It reads
+`LatitudeBandSectors` is the one that does not lean on the shipped stage at all. It reads
 `vertices.csv`, identifies airports from the `IS_AIRPORT` column the navgraph contract promises,
 and clusters the en-route vertices into latitude bands of `--sector-default-navaid-size` — never
 opening `edges.csv`, so its sectors are geographic strips rather than the connected subgraphs the
@@ -220,8 +273,10 @@ byte-identical. That is what a clean stage substitution looks like.
   `stage_interfaces.argv_to_dict(argv)` if you want a mapping.
 * **Write your artefacts where argv says** (`--out-dir`, `--path`, `--data-dir`). `run_pipeline`
   skips a stage whose artefacts already exist and looks for them at exactly those paths.
-* Run from the repository root. The default implementations spawn `python <NN_stage>.py` with no
-  path, exactly as the pipeline always has.
+* Run from the repository root. `stage_interfaces.py` resolves the shipped stage scripts relative
+  to its own directory, so the pipeline finds its own stages wherever you start it — but config
+  files, `ourairports/airports.csv` and your own `module:ClassName` are still resolved against the
+  working directory.
 * `manifest.json` does **not** record which implementation ran. Nothing in the generated output
   distinguishes a substituted stage from the default; track that yourself.
 

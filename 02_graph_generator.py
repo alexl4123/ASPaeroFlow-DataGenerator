@@ -1363,9 +1363,9 @@ class NavigationGraphBuilder(NavigationGraphStage):
     and > 0, unique ``IDENTIFIER``, every airport a reachable ``IS_AIRPORT``
     vertex.
 
-    ``run_pipeline.py`` reaches this code through
-    ``stage_interfaces.DefaultNavigationGraph``, which spawns the script out of
-    process. To select this class by name instead::
+    ``run_pipeline.py`` calls this class directly: it is stage ``navgraph``'s
+    ``default``, with no adapter and no subprocess in between. To name it
+    explicitly instead::
 
         python run_pipeline.py --config <cfg> --stage-impl \
             navgraph=02_graph_generator.py:NavigationGraphBuilder

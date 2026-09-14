@@ -237,9 +237,9 @@ class SectorCapacityGenerator(SectorCapacityStage):
     into ``--path``, capacity per TIMESTEP rather than per hour, and the
     keyed-by-navaid convention this implementation follows.
 
-    ``run_pipeline.py`` reaches this code through
-    ``stage_interfaces.DefaultSectorCapacity``, which spawns the script out of
-    process. To select this class by name instead::
+    ``run_pipeline.py`` calls this class directly: it is stage ``sectors``'s
+    ``default``, with no adapter and no subprocess in between. To name it
+    explicitly instead::
 
         python run_pipeline.py --config <cfg> --stage-impl \
             sectors=03_sector_capacity_generator.py:SectorCapacityGenerator

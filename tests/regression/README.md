@@ -157,7 +157,11 @@ grid path; add `--only dach_gabriel_tg15` (~3 min) before touching graph generat
 
 Each fixture is regenerated into a freshly deleted directory. This is required, not
 merely tidy: stage 04 rewrites `flights.csv` in place and is **not idempotent**, so
-re-running over an existing tree produces different output (README convention ④).
+re-running over an existing tree produces different output (README convention ④). A tree
+left behind by a *failed* run is worse still — a partially written artefact satisfies
+`run_pipeline`'s `file_exists` skip-guard, so the stage that failed is skipped rather than
+retried. That trap predates the in-process refactor and is unchanged by it; it was
+reproduced on both sides.
 
 ### What is deliberately NOT covered
 
@@ -221,9 +225,11 @@ PYTHON=python
 `test_navpoints/` is **not** in this repository — it lives beside the flight list in the
 external data directory. Only `dach_gabriel_tg15` needs it.
 
-`PYTHON` must be an interpreter named `python` on `PATH`: `run_pipeline.py` spawns its
-stages as `["python", "<stage>.py", …]`, not `sys.executable`, so a virtualenv that only
-provides `python3` will run the stages under the wrong interpreter.
+`PYTHON` is the interpreter everything runs under. `run_pipeline.py` no longer spawns its
+stages as `["python", "<stage>.py", …]` — it imports and calls them, so they now run under
+whichever interpreter started the pipeline, and a virtualenv providing only `python3` no
+longer runs the stages under a different one. `run_fixtures.sh` still checks that `$PYTHON`
+resolves, because it invokes it directly.
 
 ---
 

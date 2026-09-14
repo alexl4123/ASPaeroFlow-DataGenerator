@@ -396,9 +396,9 @@ class FlightScheduleSampler(FlightScheduleStage):
     contract — ``flights.csv``, ``aircrafts.csv``, ``run_config.json``, and the
     invariants each must satisfy.
 
-    ``run_pipeline.py`` reaches this code through
-    ``stage_interfaces.DefaultFlightSchedule``, which spawns the script out of
-    process. To select this class by name instead::
+    ``run_pipeline.py`` calls this class directly: it is stage ``flights``'s
+    ``default``, with no adapter and no subprocess in between. To name it
+    explicitly instead::
 
         python run_pipeline.py --config <cfg> --stage-impl \
             flights=01_data_generation_script_refactored.py:FlightScheduleSampler

@@ -668,10 +668,9 @@ class DemandModelBuilder(DemandModelStage):
     own demand model, or subclass ``DemandModelStage`` directly and write
     ``start`` from scratch.
 
-    The pipeline does not call this class in process: ``run_pipeline.py``
-    resolves stage ``model`` to ``stage_interfaces.DefaultDemandModel``, which
-    spawns this script as ``python 00_model_generation_script_refactored.py``.
-    Both routes run the code below. To select this class explicitly::
+    ``run_pipeline.py`` calls this class directly: it is stage ``model``'s
+    ``default``, with no adapter and no subprocess in between. To name it
+    explicitly instead::
 
         python run_pipeline.py --config <cfg> --stage-impl \
             model=00_model_generation_script_refactored.py:DemandModelBuilder

@@ -138,8 +138,8 @@ run_fixture() {
       --out-root "$unparsed" \
       $extra ) || {
     echo "FATAL: run_pipeline.py exited non-zero for fixture '$name'." >&2
-    echo "       Judge by the exit code -- run_pipeline captures stage output and" >&2
-    echo "       prints it only on failure, so a successful stage 04 prints no [OK]." >&2
+    echo "       Stages run inside run_pipeline's own process, so any traceback above" >&2
+    echo "       is the stage's own and names the line that failed." >&2
     return 1
   }
 

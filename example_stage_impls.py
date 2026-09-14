@@ -2,7 +2,8 @@
 """
 Worked examples of alternative stage implementations.
 
-Nothing in the pipeline imports this file. It exists to be pointed at:
+Nothing in the pipeline imports this file to run a stage. ``--list-stage-impls``
+imports it to *discover* what is in it, and otherwise it exists to be pointed at:
 
     # 1. delegate to the shipped stage 03, announcing itself. Output is identical.
     python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \\
@@ -16,15 +17,30 @@ Nothing in the pipeline imports this file. It exists to be pointed at:
     python 05_transform_for_optimizer.py --in-exp-dir /tmp/demo/<REGION> --out-root /tmp/parsed \\
         --stage-impl example_stage_impls:LoggingTransform
 
-    # 4. a stage 03 that does not call the default at all: it clusters by
+    # 4. a stage 03 that does not call the shipped stage at all: it clusters by
     #    geography instead of by graph connectivity.
     python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \\
         --out-root /tmp/demo3 --stage-impl sectors=example_stage_impls:LatitudeBandSectors
+
+    # 5. every stage at once, each delegating to the shipped one. Proves the
+    #    substitution wiring for all six; output is identical to a plain run.
+    python run_pipeline.py --config default_configs_small_scaling/30_0_east_asia_3x3.json \\
+        --out-root /tmp/demo5 \\
+        --stage-impl model=example_stage_impls:LoggingDemandModel \\
+        --stage-impl flights=example_stage_impls:LoggingFlightSchedule \\
+        --stage-impl navgraph=example_stage_impls:LoggingNavigationGraph \\
+        --stage-impl sectors=example_stage_impls:LoggingSectors \\
+        --stage-impl filedplans=example_stage_impls:LoggingFiledFlightPlan
 
 Write your own the same way: subclass the parent class for the stage (see
 ``stage_interfaces.py`` — its docstring lists the files you must write and the
 invariants you must respect), implement ``start(self, argv)``, and name your
 class as ``module:ClassName`` or ``path/to/file.py:ClassName``.
+
+To delegate to the shipped stage, call ``load(<stage key>)``. That returns an
+instance of the class in the shipped script — ``load("sectors")`` is
+``03_sector_capacity_generator.py:SectorCapacityGenerator`` — so a delegating
+implementation adds a wrapper, not a second copy of the algorithm.
 """
 
 from __future__ import annotations
@@ -34,16 +50,58 @@ from pathlib import Path
 from typing import Sequence
 
 from stage_interfaces import (
-    DefaultSectorCapacity,
-    DefaultTransform,
+    DemandModelStage,
+    FiledFlightPlanStage,
+    FlightScheduleStage,
+    NavigationGraphStage,
     SectorCapacityStage,
     TransformStage,
     argv_to_dict,
+    load,
 )
 
 
+# --------------------------------------------------------------------------
+# One delegating implementation per stage.
+#
+# Each announces itself and then runs the shipped stage unchanged, so selecting
+# all six leaves the generated files byte-identical. They are the smallest
+# possible template, and they are what proves --stage-impl is wired up for every
+# stage rather than only for the two that had examples.
+# --------------------------------------------------------------------------
+
+class LoggingDemandModel(DemandModelStage):
+    """Stage 00 template: announce yourself, then run the shipped demand model."""
+
+    def start(self, argv: Sequence[str]) -> None:
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingDemandModel: out-dir={opts.get('out-dir')} "
+              f"bin-min={opts.get('bin-min')} csv-path={opts.get('csv-path')}")
+        load("model").start(argv)
+
+
+class LoggingFlightSchedule(FlightScheduleStage):
+    """Stage 01 template: announce yourself, then run the shipped sampler."""
+
+    def start(self, argv: Sequence[str]) -> None:
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingFlightSchedule: out-dir={opts.get('out-dir')} "
+              f"seed={opts.get('seed')} flights={opts.get('flights', opts.get('scale'))}")
+        load("flights").start(argv)
+
+
+class LoggingNavigationGraph(NavigationGraphStage):
+    """Stage 02 template: announce yourself, then run the shipped graph builder."""
+
+    def start(self, argv: Sequence[str]) -> None:
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingNavigationGraph: out-dir={opts.get('out-dir')} "
+              f"criterion={opts.get('criterion')} max-edge-km={opts.get('max-edge-km')}")
+        load("navgraph").start(argv)
+
+
 class LoggingSectors(SectorCapacityStage):
-    """The smallest possible alternative: announce yourself, then call the default.
+    """Stage 03 template: announce yourself, then run the shipped capacity rule.
 
     Useful as a template and as a check that ``--stage-impl`` is wired up — the
     output is byte-identical to a run without it.
@@ -53,25 +111,59 @@ class LoggingSectors(SectorCapacityStage):
         opts = argv_to_dict(argv)
         print(f"[example] LoggingSectors: navgraph={opts.get('path')} "
               f"cap-enroute={opts.get('cap-enroute')} cap-airport={opts.get('cap-airport')}")
-        DefaultSectorCapacity().start(argv)
+        load("sectors").start(argv)
 
+
+class LoggingFiledFlightPlan(FiledFlightPlanStage):
+    """Stage 04 template: announce yourself, then run the shipped router.
+
+    This is the stage nobody had substituted before, and the one with the most
+    to go wrong: it is the only stage that rewrites its own input, so an
+    implementation that wraps it must not run it twice.
+    """
+
+    def start(self, argv: Sequence[str]) -> None:
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingFiledFlightPlan: data-dir={opts.get('data-dir')} "
+              f"navgraph-dir={opts.get('navgraph-dir')} "
+              f"TG={opts.get('time-granularity')} resample-seed={opts.get('resample-seed')}")
+        load("filedplans").start(argv)
+
+
+class LoggingTransform(TransformStage):
+    """Stage 05 template: announce yourself, then run the shipped transform.
+
+    Stage 05 is its own entry point and carries its own ``--stage-impl``
+    selector, so this one is selected on ``05_transform_for_optimizer.py``
+    rather than on ``run_pipeline.py``.
+    """
+
+    def start(self, argv: Sequence[str]) -> None:
+        opts = argv_to_dict(argv)
+        print(f"[example] LoggingTransform: in={opts.get('in-exp-dir')} out={opts.get('out-root')}")
+        load("transform").start(argv)
+
+
+# --------------------------------------------------------------------------
+# Substitutions that actually change the output.
+# --------------------------------------------------------------------------
 
 class FlatCapacitySectors(SectorCapacityStage):
     """A real substitution: give every sector the same capacity.
 
     The shipped stage 03 gives airport sectors ``--cap-airport`` (effectively
-    unlimited) and en-route sectors ``--cap-enroute``. This one runs the default
-    to get the clustering, then overwrites every capacity with ``--cap-enroute``,
-    so airports become as constrained as the airspace.
+    unlimited) and en-route sectors ``--cap-enroute``. This one runs the shipped
+    stage to get the clustering, then overwrites every capacity with
+    ``--cap-enroute``, so airports become as constrained as the airspace.
 
     It shows the pattern that most alternative implementations want: keep the
-    default's structure, change one rule. The invariants of
+    shipped stage's structure, change one rule. The invariants of
     ``SectorCapacityStage`` still hold — ``sectors.csv`` keeps its columns, and
     capacity stays >= 1, which check ``P4`` verifies.
     """
 
     def start(self, argv: Sequence[str]) -> None:
-        DefaultSectorCapacity().start(argv)
+        load("sectors").start(argv)
 
         opts = argv_to_dict(argv)
         nav_dir = Path(str(opts["path"]))
@@ -92,10 +184,10 @@ class FlatCapacitySectors(SectorCapacityStage):
 class LatitudeBandSectors(SectorCapacityStage):
     """A stage 03 written against the interface, not derived from the shipped one.
 
-    ``LoggingSectors`` and ``FlatCapacitySectors`` both call
-    ``DefaultSectorCapacity`` and adjust what it produced. This one does not run
-    the shipped stage at all — it reads the navgraph and writes both artefacts
-    itself, which is what a third party replacing stage 03 actually has to do.
+    ``LoggingSectors`` and ``FlatCapacitySectors`` both call the shipped stage
+    and adjust what it produced. This one does not run it at all — it reads the
+    navgraph and writes both artefacts itself, which is what a third party
+    replacing stage 03 actually has to do.
 
     The rule it implements
     ----------------------
@@ -188,12 +280,3 @@ class LatitudeBandSectors(SectorCapacityStage):
               f"{n_bands} latitude band(s) of <= {band_size} navaids + "
               f"{len(vertices) - len(enroute)} airport sector(s); "
               f"cap-enroute={cap_enroute} cap-airport={cap_airport}")
-
-
-class LoggingTransform(TransformStage):
-    """The same template for stage 05, which carries its own ``--stage-impl``."""
-
-    def start(self, argv: Sequence[str]) -> None:
-        opts = argv_to_dict(argv)
-        print(f"[example] LoggingTransform: in={opts.get('in-exp-dir')} out={opts.get('out-root')}")
-        DefaultTransform().start(argv)

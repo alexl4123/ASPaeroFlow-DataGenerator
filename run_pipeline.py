@@ -24,11 +24,10 @@ Steps:
 from __future__ import annotations
 import argparse
 import json
-import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Iterable, List, Tuple
-import os, shlex, subprocess
+from typing import Iterable, List, Sequence, Tuple
+import shlex
 import sys
 import shutil
 
@@ -42,25 +41,28 @@ PIPELINE_STAGES = ("model", "flights", "navgraph", "sectors", "filedplans")
 # utils
 # -------------------------
 
-def run(cmd, cwd: Path | None = None):
-    print(f"[RUN] {shlex.join(map(str, cmd))}")
+def start_stage(impl: stage_interfaces.GeneratorStage, key: str, argv: Sequence) -> None:
+    """Run one stage in this process, echoing the canonical argv first.
+
+    The pipeline used to spawn every stage as ``python <NN_stage>.py …`` and this
+    line echoed that command.  Stages are now called directly, so the line names
+    the class instead -- same provenance, one fewer interpreter start per stage
+    per dataset.  Two behaviours changed with it:
+
+    * what a stage prints is no longer captured and replayed only on failure, it
+      goes straight to the terminal as it is produced (README convention ④);
+    * a stage that fails raises its own exception here rather than a
+      ``subprocess.CalledProcessError``.  Nothing below catches it, so ``main``
+      unwinds and the pipeline still exits non-zero -- with a traceback that now
+      names the line that actually failed.
+
+    Arguments are stringified exactly as the spawning code did, so a value that
+    was ``None`` still reaches the stage as the string ``"None"``.
+    """
+    argv = [str(x) for x in argv]
+    print(f"[RUN] {key}: {type(impl).__name__}.start({shlex.join(argv)})")
     sys.stdout.flush()
-
-    try:
-        cp = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,   # <- capture stdout+stderr
-            text=True,             # <- decode to str
-            check=True,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        )
-
-        return cp
-    except subprocess.CalledProcessError as e:
-        print("\n--- subprocess stdout ---\n", (e.stdout or "<empty>"), sep="")
-        print("\n--- subprocess stderr ---\n", (e.stderr or "<empty>"), sep="")
-        raise
+    impl.start(argv)
 
 def file_exists(path: Path) -> bool:
     try:
@@ -268,8 +270,14 @@ def parse_args() -> argparse.Namespace:
                         ". SPEC is a registered name ('default'), 'module:ClassName' or "
                         "'path/to/file.py:ClassName'; the class must subclass the stage's "
                         "interface in stage_interfaces.py. Repeatable, e.g. "
-                        "--stage-impl navgraph=my_graph:MyGraphStage. Omit it and every stage "
-                        "uses the shipped default.")
+                        "--stage-impl navgraph=my_graph:MyGraphStage. SPEC 'help' prints that "
+                        "stage's contract and exits. Omit the flag and every stage uses the "
+                        "shipped default.")
+    p.add_argument("--list-stage-impls", action="store_true",
+                   help="List, per stage: the interface class whose docstring is the contract "
+                        "(with file and line), the short names that work, the shipped "
+                        "implementation to copy, and the worked examples in "
+                        "example_stage_impls.py. Then exit.")
 
     args = p.parse_args()
 
@@ -300,9 +308,17 @@ def parse_args() -> argparse.Namespace:
 def main():
     a = parse_args()
 
+    if a.list_stage_impls:
+        print(stage_interfaces.describe_all())
+        return
+
     # Resolve the stage implementations before anything is written: a bad
     # --stage-impl must fail before the run starts, not halfway through it.
+    # '--stage-impl STAGE=help' asks for the contract rather than a run, and is
+    # answered here for the same reason -- nothing has been written yet.
     try:
+        if stage_interfaces.show_contract_requests(a.stage_impl):
+            return
         impls = stage_interfaces.load_all(a.stage_impl, PIPELINE_STAGES)
     except stage_interfaces.StageImplError as exc:
         print(f"[FATAL] --stage-impl: {exc}", file=sys.stderr)
@@ -357,7 +373,7 @@ def main():
         if a.airport_types:
             cmd += ["--airport-types", str(a.airport_types)]
 
-        impls["model"].start(cmd)
+        start_stage(impls["model"], "model", cmd)
     else:
         print("[SKIP] Model artifacts present → step 1 skipped.")
    
@@ -415,7 +431,7 @@ def main():
         #    if file_exists(od_file):
         #        cmd += ["--od-file", str(od_file)]
 
-        impls["navgraph"].start(cmd)
+        start_stage(impls["navgraph"], "navgraph", cmd)
     else:
         print("[SKIP] Navgraph present → step 3 skipped.")
  
@@ -427,7 +443,7 @@ def main():
         file_exists(nav_dir / "sectors.csv"),
     ])
     if graph_needed:
-        impls["sectors"].start([
+        start_stage(impls["sectors"], "sectors", [
             "--path", str(nav_dir),
             "--cap-enroute", str(a.cap_enroute),
             "--cap-airport", str(a.cap_airport),
@@ -486,7 +502,7 @@ def main():
             size_arg = ["--flights",str(first_scale)]
         else:
             size_arg = ["--scale",str(first_scale)]
-        impls["flights"].start([
+        start_stage(impls["flights"], "flights", [
             "--model-dir", str(model_dir),
             "--day", sim_day,
             "--seed", str(first_seed),
@@ -523,7 +539,7 @@ def main():
 
         print(f"[5/{idx+1}/Data] Generating data: scale={scale:g}, seed={seed}")
         if data_needed:
-            impls["flights"].start([
+            start_stage(impls["flights"], "flights", [
                 "--model-dir", str(model_dir),
                 "--seed", str(seed),
                 "--day", sim_day,
@@ -550,7 +566,7 @@ def main():
             print(f"[5/{idx+1}/Trajectory] Generating filed plans for {ds_dir.name}")
             if trajectory_needed:
                 # Filed flight plans (always ensure present)
-                impls["filedplans"].start([
+                start_stage(impls["filedplans"], "filedplans", [
                     "--data-dir", str(ds_dir),
                     "--navgraph-dir", str(nav_dir),
                     "--time-granularity", str(a.time_granularity),

@@ -597,9 +597,9 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
     Note the stage is **not idempotent**: it rewrites ``flights.csv`` and
     ``aircrafts.csv`` in place, so a re-run must start from stage 01.
 
-    ``run_pipeline.py`` reaches this code through
-    ``stage_interfaces.DefaultFiledFlightPlan``, which spawns the script out of
-    process. To select this class by name instead::
+    ``run_pipeline.py`` calls this class directly: it is stage ``filedplans``'s
+    ``default``, with no adapter and no subprocess in between. To name it
+    explicitly instead::
 
         python run_pipeline.py --config <cfg> --stage-impl \
             filedplans=04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator
