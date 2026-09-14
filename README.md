@@ -127,18 +127,37 @@ The shipped scripts are registered as that stage's `default`, so **nothing chang
 for something else**. To use your own trajectory generator, graph builder or capacity rule,
 subclass the stage's parent class and name it on the command line.
 
-| stage | key | parent class | default implementation |
+| stage | key | parent class | shipped implementation (`path.py:Class`) |
 |---|---|---|---|
-| 00 demand model | `model` | `DemandModelStage` | `00_model_generation_script_refactored.py` |
-| 01 flight schedule | `flights` | `FlightScheduleStage` | `01_data_generation_script_refactored.py` |
-| 02 navigation graph | `navgraph` | `NavigationGraphStage` | `02_graph_generator.py` |
-| 03 sectors and capacities | `sectors` | `SectorCapacityStage` | `03_sector_capacity_generator.py` |
-| 04 filed flight plans | `filedplans` | `FiledFlightPlanStage` | `04_simplified_filed_flight_plan_generator.py` |
-| 05 transform | `transform` | `TransformStage` | `05_transform_for_optimizer.py` |
+| 00 demand model | `model` | `DemandModelStage` | `00_model_generation_script_refactored.py:DemandModelBuilder` |
+| 01 flight schedule | `flights` | `FlightScheduleStage` | `01_data_generation_script_refactored.py:FlightScheduleSampler` |
+| 02 navigation graph | `navgraph` | `NavigationGraphStage` | `02_graph_generator.py:NavigationGraphBuilder` |
+| 03 sectors and capacities | `sectors` | `SectorCapacityStage` | `03_sector_capacity_generator.py:SectorCapacityGenerator` |
+| 04 filed flight plans | `filedplans` | `FiledFlightPlanStage` | `04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator` |
+| 05 transform | `transform` | `TransformStage` | `05_transform_for_optimizer.py:OptimizerTransform` |
 
 Each parent class's docstring **is the contract**: the files an implementation must write, the
 columns they carry, and the invariants it must respect. Read it before writing one — nothing
 validates your output until `check_instances.py` runs at the end.
+
+### The shipped stage is a working template
+
+The class in the right-hand column is not a wrapper. It subclasses the stage's parent class and
+its `start(argv)` is the algorithm — so the shipped stage is itself a worked example of the
+interface, and copying the script gives you something that already runs.
+
+`run_pipeline.py` reaches that code through the `Default*` adapter in `stage_interfaces.py`,
+which spawns the script as `python 02_graph_generator.py …`. That subprocess boundary is
+deliberate: it isolates each stage's memory, and it means a refactor of the generator can be
+proved output-identical because the process is launched exactly as it always was. The adapters
+are four lines each and contain no algorithm; do not read them to learn what a stage does.
+
+Both routes run the same code, and you can pick either:
+
+```bash
+--stage-impl navgraph=default                                      # spawn it (what the pipeline does)
+--stage-impl navgraph=02_graph_generator.py:NavigationGraphBuilder # import it and call it in process
+```
 
 ```bash
 # stages 00-04, on the pipeline driver.  Repeatable; STAGE=SPEC.
@@ -156,7 +175,7 @@ with an error naming the interface it had to implement.
 
 ### Worked example
 
-`example_stage_impls.py` ships two alternative stage 03 implementations and one alternative
+`example_stage_impls.py` ships three alternative stage 03 implementations and one alternative
 stage 05. The smallest one just calls the default:
 
 ```python
@@ -182,6 +201,16 @@ Its output is byte-identical to a run without the flag — fingerprint both tree
 is a real substitution: it runs the default for the clustering, then gives every sector
 `--cap-enroute`, so airport sectors drop from 60000 to 1 and that change reaches the parsed
 instance.
+
+`LatitudeBandSectors` is the one that does not lean on the default at all. It reads
+`vertices.csv`, identifies airports from the `IS_AIRPORT` column the navgraph contract promises,
+and clusters the en-route vertices into latitude bands of `--sector-default-navaid-size` — never
+opening `edges.csv`, so its sectors are geographic strips rather than the connected subgraphs the
+shipped stage grows. On the EAST-ASIA 3x3 fixture the 3x3 grid goes from the shipped stage's
+L-shaped blobs to one sector per grid row, `check_instances.py` passes all six instances, and
+fingerprinting the whole tree against the baseline shows **7 changed files, all of them
+`navaid_sector_assignment.csv`** — `sectors.csv`, the graph, the flights and the filed plans are
+byte-identical. That is what a clean stage substitution looks like.
 
 ### Traps
 
