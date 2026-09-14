@@ -37,6 +37,42 @@ Two rules bind every implementation:
 
 An implementation may shell out, import a library, or call the default and
 post-process it — see ``example_stage_impls.py`` for both of the last two.
+
+Two things are registered per stage, and they are not the same thing
+------------------------------------------------------------------
+*The reference implementation* is the class in the shipped script itself —
+``02_graph_generator.py:NavigationGraphBuilder`` and its five siblings. It
+subclasses the stage's parent class and its ``start`` is the real algorithm.
+That is the file to read, and the file to copy, when writing your own.
+
+*The ``Default*`` adapter* below is how ``run_pipeline.py`` **runs** that
+reference implementation: out of process, as ``python 02_graph_generator.py …``.
+The pipeline deliberately does not call the class in process. The subprocess
+boundary is what makes a refactor's output provably unchanged (the process is
+started the same way it always was) and it isolates each stage's memory, which
+matters for the graph builder on large regions.
+
+So ``--stage-impl navgraph=default`` and
+``--stage-impl navgraph=02_graph_generator.py:NavigationGraphBuilder`` run the
+same code; the first spawns it, the second imports it and calls it in this
+process. Either is a legitimate way to reach the shipped stage.
+
+Stage by stage — read the middle column, the right column is only the spawner:
+
+* ``model``      00_model_generation_script_refactored.py:DemandModelBuilder
+  / ``DefaultDemandModel``
+* ``flights``    01_data_generation_script_refactored.py:FlightScheduleSampler
+  / ``DefaultFlightSchedule``
+* ``navgraph``   02_graph_generator.py:NavigationGraphBuilder
+  / ``DefaultNavigationGraph``
+* ``sectors``    03_sector_capacity_generator.py:SectorCapacityGenerator
+  / ``DefaultSectorCapacity``
+* ``filedplans`` 04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator
+  / ``DefaultFiledFlightPlan``
+* ``transform``  05_transform_for_optimizer.py:OptimizerTransform
+  / ``DefaultTransform``
+
+Each interface also carries its reference implementation as ``reference_impl``.
 """
 
 from __future__ import annotations
@@ -64,6 +100,10 @@ class GeneratorStage(ABC):
 
     #: which stage this interface describes; set on each subclass
     stage_key: str = ""
+
+    #: ``path/to/file.py:ClassName`` of the shipped reference implementation of
+    #: this stage — the working example to read and copy. Set on each subclass.
+    reference_impl: str = ""
 
     @abstractmethod
     def start(self, argv: Sequence[str]) -> None:
@@ -110,6 +150,9 @@ class DemandModelStage(GeneratorStage):
       as proof the stage ran and skips it on a re-run.
     """
 
+    #: the shipped example to read and copy
+    reference_impl = "00_model_generation_script_refactored.py:DemandModelBuilder"
+
     stage_key = "model"
 
 
@@ -142,6 +185,9 @@ class FlightScheduleStage(GeneratorStage):
       columns are tolerated: the shipped stage 04 adds ``src``, ``dst``,
       ``start_slot``, ``speed_kts``.
     """
+
+    #: the shipped example to read and copy
+    reference_impl = "01_data_generation_script_refactored.py:FlightScheduleSampler"
 
     stage_key = "flights"
 
@@ -177,6 +223,9 @@ class NavigationGraphStage(GeneratorStage):
     * ``IDENTIFIER`` is unique. Stage 05 turns it into the integer vertex id
       that the solver-facing files use, via ``mappings/vertex_map.csv``.
     """
+
+    #: the shipped example to read and copy
+    reference_impl = "02_graph_generator.py:NavigationGraphBuilder"
 
     stage_key = "navgraph"
 
@@ -215,6 +264,9 @@ class SectorCapacityStage(GeneratorStage):
       checker only requires that the two files agree — but downstream consumers
       that assume convention ② will read it differently.
     """
+
+    #: the shipped example to read and copy
+    reference_impl = "03_sector_capacity_generator.py:SectorCapacityGenerator"
 
     stage_key = "sectors"
 
@@ -262,6 +314,9 @@ class FiledFlightPlanStage(GeneratorStage):
     must start from stage 01, not from here.
     """
 
+    #: the shipped example to read and copy
+    reference_impl = "04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator"
+
     stage_key = "filedplans"
 
 
@@ -303,6 +358,9 @@ class TransformStage(GeneratorStage):
       downloads, so ``check_instances.py`` runs against exactly these files.
     """
 
+    #: the shipped example to read and copy
+    reference_impl = "05_transform_for_optimizer.py:OptimizerTransform"
+
     stage_key = "transform"
 
 
@@ -317,7 +375,12 @@ INTERFACES: Dict[str, Type[GeneratorStage]] = {
 
 
 # --------------------------------------------------------------------------
-# the shipped implementations
+# the `default` adapters
+#
+# These are NOT the shipped algorithms. Each one spawns the script that holds
+# the algorithm, so the reference implementation runs in its own process. Read
+# the script (and the class named in the docstring) for the algorithm; read
+# these four-line classes only to see how the pipeline launches it.
 # --------------------------------------------------------------------------
 
 def _run_script(script: str, argv: Sequence[str]) -> None:
@@ -331,7 +394,14 @@ def _run_script(script: str, argv: Sequence[str]) -> None:
 
 
 class DefaultDemandModel(DemandModelStage):
-    """The shipped stage 00, spawned as ``python 00_…py``."""
+    """Runs the reference implementation ``00_model_generation_script_refactored.py:DemandModelBuilder``
+    out of process, as ``python 00_model_generation_script_refactored.py …``.
+
+    The algorithm is in that class, not here. This adapter exists so that
+    stage 00 has a registered ``default`` and so that an alternative
+    implementation can delegate to the shipped one by instantiating it
+    (``example_stage_impls.py`` does exactly that).
+    """
 
     SCRIPT = "00_model_generation_script_refactored.py"
 
@@ -340,7 +410,14 @@ class DefaultDemandModel(DemandModelStage):
 
 
 class DefaultFlightSchedule(FlightScheduleStage):
-    """The shipped stage 01, spawned as ``python 01_…py``."""
+    """Runs the reference implementation ``01_data_generation_script_refactored.py:FlightScheduleSampler``
+    out of process, as ``python 01_data_generation_script_refactored.py …``.
+
+    The algorithm is in that class, not here. This adapter exists so that
+    stage 01 has a registered ``default`` and so that an alternative
+    implementation can delegate to the shipped one by instantiating it
+    (``example_stage_impls.py`` does exactly that).
+    """
 
     SCRIPT = "01_data_generation_script_refactored.py"
 
@@ -349,7 +426,14 @@ class DefaultFlightSchedule(FlightScheduleStage):
 
 
 class DefaultNavigationGraph(NavigationGraphStage):
-    """The shipped stage 02, spawned as ``python 02_…py``."""
+    """Runs the reference implementation ``02_graph_generator.py:NavigationGraphBuilder``
+    out of process, as ``python 02_graph_generator.py …``.
+
+    The algorithm is in that class, not here. This adapter exists so that
+    stage 02 has a registered ``default`` and so that an alternative
+    implementation can delegate to the shipped one by instantiating it
+    (``example_stage_impls.py`` does exactly that).
+    """
 
     SCRIPT = "02_graph_generator.py"
 
@@ -358,7 +442,14 @@ class DefaultNavigationGraph(NavigationGraphStage):
 
 
 class DefaultSectorCapacity(SectorCapacityStage):
-    """The shipped stage 03, spawned as ``python 03_…py``."""
+    """Runs the reference implementation ``03_sector_capacity_generator.py:SectorCapacityGenerator``
+    out of process, as ``python 03_sector_capacity_generator.py …``.
+
+    The algorithm is in that class, not here. This adapter exists so that
+    stage 03 has a registered ``default`` and so that an alternative
+    implementation can delegate to the shipped one by instantiating it
+    (``example_stage_impls.py`` does exactly that).
+    """
 
     SCRIPT = "03_sector_capacity_generator.py"
 
@@ -367,7 +458,14 @@ class DefaultSectorCapacity(SectorCapacityStage):
 
 
 class DefaultFiledFlightPlan(FiledFlightPlanStage):
-    """The shipped stage 04, spawned as ``python 04_…py``."""
+    """Runs the reference implementation ``04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator``
+    out of process, as ``python 04_simplified_filed_flight_plan_generator.py …``.
+
+    The algorithm is in that class, not here. This adapter exists so that
+    stage 04 has a registered ``default`` and so that an alternative
+    implementation can delegate to the shipped one by instantiating it
+    (``example_stage_impls.py`` does exactly that).
+    """
 
     SCRIPT = "04_simplified_filed_flight_plan_generator.py"
 
@@ -376,13 +474,16 @@ class DefaultFiledFlightPlan(FiledFlightPlanStage):
 
 
 class DefaultTransform(TransformStage):
-    """The shipped stage 05.
+    """Runs the reference implementation
+    ``05_transform_for_optimizer.py:OptimizerTransform`` out of process.
 
-    Unlike the other defaults this one is *not* spawned: stage 05 is its own
-    entry point, and when it selects the default implementation it simply runs
-    its own code. The class exists so that ``transform`` has a registered
-    ``default`` like every other stage, and so that an alternative transform can
-    delegate to the shipped one by instantiating it.
+    Stage 05 is its own entry point, so this adapter is reached from two
+    directions: ``run_pipeline.py`` never drives ``transform``, but
+    ``05_transform_for_optimizer.py --stage-impl <SPEC>`` hands control to
+    ``<SPEC>``, and an alternative transform delegates back here to get the
+    shipped behaviour. Spawning (rather than calling ``OptimizerTransform``
+    in process) keeps that delegation from recursing: the spawned command
+    carries no ``--stage-impl``, so the child runs the transform itself.
     """
 
     SCRIPT = "05_transform_for_optimizer.py"

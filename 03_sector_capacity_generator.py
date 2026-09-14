@@ -18,14 +18,16 @@ where Sector_ID comes from an ID column in vertices.csv (no renumbering).
 from __future__ import annotations
 import argparse
 from pathlib import Path
+from typing import Sequence
 import sys
 import re
 import numpy as np
 from collections import deque
 import pandas as pd
 import networkx as nx
+from stage_interfaces import SectorCapacityStage
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate sectors.csv with per-vertex capacities.")
     p.add_argument("--path", type=Path, default=Path("./navgraph_out"),
                    help="Directory that contains vertices.csv; sectors.csv will be written here too.")
@@ -38,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--convex-sectors", type=int, default=0,
                    help="--convex-sectors=0 (false) or --convex-sectors=1 (true)")
     p.add_argument("--out", type=Path, default=Path("./navgraph_out/world/sectors.csv"), help="Output CSV path.")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 def load_icao_set(ourairports_csv: Path) -> set[str]:
     """
@@ -226,126 +228,142 @@ def _convexity(G, sector, v, unmarked):
 
 
 
-def main():
-    args = parse_args()
+class SectorCapacityGenerator(SectorCapacityStage):
+    r"""The shipped stage 03: cluster vertices into sectors and give them capacities.
 
-    vertices_path = args.path / "vertices.csv"
-    out_path = args.path / "sectors.csv"
-    edges_path = args.path / "edges.csv"
+    This is the reference implementation of
+    :class:`stage_interfaces.SectorCapacityStage`; that class's docstring is the
+    contract — ``sectors.csv`` and ``navaid_sector_assignment.csv`` written back
+    into ``--path``, capacity per TIMESTEP rather than per hour, and the
+    keyed-by-navaid convention this implementation follows.
 
-    if not vertices_path.exists():
-        raise FileNotFoundError(f"vertices.csv not found: {vertices_path}")
+    ``run_pipeline.py`` reaches this code through
+    ``stage_interfaces.DefaultSectorCapacity``, which spawns the script out of
+    process. To select this class by name instead::
+
+        python run_pipeline.py --config <cfg> --stage-impl \
+            sectors=03_sector_capacity_generator.py:SectorCapacityGenerator
+
+    ``example_stage_impls.py`` holds alternatives written against the same
+    interface.
+    """
+
+    def start(self, argv: Sequence[str]) -> None:
+        args = parse_args(list(argv))
+
+        vertices_path = args.path / "vertices.csv"
+        out_path = args.path / "sectors.csv"
+        edges_path = args.path / "edges.csv"
+
+        if not vertices_path.exists():
+            raise FileNotFoundError(f"vertices.csv not found: {vertices_path}")
  
-    print("[1/3] Loading vertices...")
-    vdf = pd.read_csv(vertices_path, dtype={"IDENTIFIER":"string"})
+        print("[1/3] Loading vertices...")
+        vdf = pd.read_csv(vertices_path, dtype={"IDENTIFIER":"string"})
 
-    if "IDENTIFIER" not in vdf.columns:
-        raise ValueError("vertices.csv must have an IDENTIFIER column.")
-    vdf["IDENTIFIER"] = vdf["IDENTIFIER"].astype("string").str.strip().str.upper()
-    N = len(vdf)
-    print(f"       {N:,} vertices found.")
+        if "IDENTIFIER" not in vdf.columns:
+            raise ValueError("vertices.csv must have an IDENTIFIER column.")
+        vdf["IDENTIFIER"] = vdf["IDENTIFIER"].astype("string").str.strip().str.upper()
+        N = len(vdf)
+        print(f"       {N:,} vertices found.")
 
-    # Determine which column to use as Sector_ID (no renumbering)
-    id_candidates = [
-        "ID", "Id", "id",
-        "Vertex_ID", "VERTEX_ID", "vertex_id",
-        "Sector_ID", "SECTOR_ID", "sector_id",
-        # fall back to the human identifier if no numeric ID present
-        "IDENTIFIER"
-    ]
-    id_col = next((c for c in id_candidates if c in vdf.columns), None)
-    if id_col is None:
-        # Absolute fallback (not expected with your pipeline)
-        print("[WARN] No ID-like column found in vertices.csv; falling back to row index.",
-              file=sys.stderr)
-        vdf["_ROW_INDEX"] = np.arange(N)
-        id_col = "_ROW_INDEX"
-    print(f"       Using '{id_col}' as Sector_ID source.")
+        # Determine which column to use as Sector_ID (no renumbering)
+        id_candidates = [
+            "ID", "Id", "id",
+            "Vertex_ID", "VERTEX_ID", "vertex_id",
+            "Sector_ID", "SECTOR_ID", "sector_id",
+            # fall back to the human identifier if no numeric ID present
+            "IDENTIFIER"
+        ]
+        id_col = next((c for c in id_candidates if c in vdf.columns), None)
+        if id_col is None:
+            # Absolute fallback (not expected with your pipeline)
+            print("[WARN] No ID-like column found in vertices.csv; falling back to row index.",
+                  file=sys.stderr)
+            vdf["_ROW_INDEX"] = np.arange(N)
+            id_col = "_ROW_INDEX"
+        print(f"       Using '{id_col}' as Sector_ID source.")
 
-    print("[2/3] Detecting airports...")
-    icao_set = load_icao_set(args.ourairports)
-    if icao_set:
-        is_airport = vdf["IDENTIFIER"].isin(icao_set)
-        method = "OurAirports match"
-    else:
-        # Fallback: 4-letter ICAO-looking identifiers
-        is_airport = vdf["IDENTIFIER"].str.match(r"^[A-Z]{4}$", na=False)
-        method = "ICAO regex fallback"
-    n_airports = int(is_airport.sum())
-    print(f"       Airports detected: {n_airports:,} ({method}).")
-
-    # Build connected navaid->sector assignment for ENROUTE vertices
-    print("[3/4] Building connected navaid-sector assignment...")
-    # Determine processing order (deterministic: as in vertices.csv)
-    order = {k: i for i, k in enumerate(vdf[id_col].tolist())}
-    # Separate airport vs en-route sets
-    enroute_mask = ~is_airport
-    enroute_ids = vdf.loc[enroute_mask, id_col].astype(object).tolist()
-    airport_ids = vdf.loc[is_airport, id_col].astype(object).tolist()
-
-    if not edges_path.exists():
-        print(f"[WARN] edges.csv not found at {edges_path}. "
-              f"Falling back to simple contiguous chunks of size n={args.sector_default_navaid_size} (connectivity not guaranteed).",
-              file=sys.stderr)
-        groups = [enroute_ids[i:i+args.sector_default_navaid_size] for i in range(0, len(enroute_ids), args.sector_default_navaid_size)]
-    else:
-        print("       Loading edges...")
-        edf = pd.read_csv(edges_path, dtype=object, low_memory=False)
-        enroute_set = set(enroute_ids)
-        if args.convex_sectors == 0:
-            adj = _build_adjacency(edf, id_col=id_col, allowed_ids=enroute_set)
-            groups = _partition_connected(enroute_ids, adj, order, n=args.sector_default_navaid_size)
+        print("[2/3] Detecting airports...")
+        icao_set = load_icao_set(args.ourairports)
+        if icao_set:
+            is_airport = vdf["IDENTIFIER"].isin(icao_set)
+            method = "OurAirports match"
         else:
-            groups = _partition_connected_convex(enroute_ids, edf, order, n=args.sector_default_navaid_size)
+            # Fallback: 4-letter ICAO-looking identifiers
+            is_airport = vdf["IDENTIFIER"].str.match(r"^[A-Z]{4}$", na=False)
+            method = "ICAO regex fallback"
+        n_airports = int(is_airport.sum())
+        print(f"       Airports detected: {n_airports:,} ({method}).")
 
-        #print(groups)
+        # Build connected navaid->sector assignment for ENROUTE vertices
+        print("[3/4] Building connected navaid-sector assignment...")
+        # Determine processing order (deterministic: as in vertices.csv)
+        order = {k: i for i, k in enumerate(vdf[id_col].tolist())}
+        # Separate airport vs en-route sets
+        enroute_mask = ~is_airport
+        enroute_ids = vdf.loc[enroute_mask, id_col].astype(object).tolist()
+        airport_ids = vdf.loc[is_airport, id_col].astype(object).tolist()
 
-    print(f"       Created {len(groups)} connected en-route sectors (target size n={args.sector_default_navaid_size}).")
+        if not edges_path.exists():
+            print(f"[WARN] edges.csv not found at {edges_path}. "
+                  f"Falling back to simple contiguous chunks of size n={args.sector_default_navaid_size} (connectivity not guaranteed).",
+                  file=sys.stderr)
+            groups = [enroute_ids[i:i+args.sector_default_navaid_size] for i in range(0, len(enroute_ids), args.sector_default_navaid_size)]
+        else:
+            print("       Loading edges...")
+            edf = pd.read_csv(edges_path, dtype=object, low_memory=False)
+            enroute_set = set(enroute_ids)
+            if args.convex_sectors == 0:
+                adj = _build_adjacency(edf, id_col=id_col, allowed_ids=enroute_set)
+                groups = _partition_connected(enroute_ids, adj, order, n=args.sector_default_navaid_size)
+            else:
+                groups = _partition_connected_convex(enroute_ids, edf, order, n=args.sector_default_navaid_size)
 
-    # Create human-friendly sector IDs
-    sector_ids = [f"SECTOR_{i:06d}" for i in range(len(groups))]
-    enroute_assign = {nid: sid for sid, grp in zip(sector_ids, groups) for nid in grp}
-    airport_assign = {aid: f"SECTOR_AIRPORT_{aid}" for aid in airport_ids}
-    assign_map = {**enroute_assign, **airport_assign}
+            #print(groups)
 
-    # Write navaid->sector assignment
-    navaid_ids_series = vdf[id_col].astype(object)
-    sector_series = navaid_ids_series.map(assign_map)
-    # Guarantee full coverage: any unassigned navaid becomes its own singleton sector
-    missing = sector_series.isna()
-    if missing.any():
-        missing_count = int(missing.sum())
-        print(f"[WARN] {missing_count:,} navaids had no assigned sector; "
-              f"assigning each to its own singleton sector.", file=sys.stderr)
-        sector_series.loc[missing] = navaid_ids_series.loc[missing].map(lambda x: f"SECTOR_SINGLE_{x}")
-    nsdf = pd.DataFrame({
-        "Navaid_ID": navaid_ids_series,
-        "Sector_ID": sector_series
-    })
-    if nsdf["Sector_ID"].isna().any():
-        raise AssertionError("Internal error: some navaids still lack a sector assignment.")
+        print(f"       Created {len(groups)} connected en-route sectors (target size n={args.sector_default_navaid_size}).")
+
+        # Create human-friendly sector IDs
+        sector_ids = [f"SECTOR_{i:06d}" for i in range(len(groups))]
+        enroute_assign = {nid: sid for sid, grp in zip(sector_ids, groups) for nid in grp}
+        airport_assign = {aid: f"SECTOR_AIRPORT_{aid}" for aid in airport_ids}
+        assign_map = {**enroute_assign, **airport_assign}
+
+        # Write navaid->sector assignment
+        navaid_ids_series = vdf[id_col].astype(object)
+        sector_series = navaid_ids_series.map(assign_map)
+        # Guarantee full coverage: any unassigned navaid becomes its own singleton sector
+        missing = sector_series.isna()
+        if missing.any():
+            missing_count = int(missing.sum())
+            print(f"[WARN] {missing_count:,} navaids had no assigned sector; "
+                  f"assigning each to its own singleton sector.", file=sys.stderr)
+            sector_series.loc[missing] = navaid_ids_series.loc[missing].map(lambda x: f"SECTOR_SINGLE_{x}")
+        nsdf = pd.DataFrame({
+            "Navaid_ID": navaid_ids_series,
+            "Sector_ID": sector_series
+        })
+        if nsdf["Sector_ID"].isna().any():
+            raise AssertionError("Internal error: some navaids still lack a sector assignment.")
 
 
-    nsdf_path = args.path / "navaid_sector_assignment.csv"
-    nsdf.to_csv(nsdf_path, index=False)
+        nsdf_path = args.path / "navaid_sector_assignment.csv"
+        nsdf.to_csv(nsdf_path, index=False)
 
-    print("[4/4] Writing sectors.csv (atomic capacities)...")
+        print("[4/4] Writing sectors.csv (atomic capacities)...")
 
-    capacities = np.where(is_airport.to_numpy(), args.cap_airport, args.cap_enroute)
-    out_df = pd.DataFrame({
-        "Sector_ID": vdf[id_col],
-        "Capacity": capacities.astype(int)
-    })
+        capacities = np.where(is_airport.to_numpy(), args.cap_airport, args.cap_enroute)
+        out_df = pd.DataFrame({
+            "Sector_ID": vdf[id_col],
+            "Capacity": capacities.astype(int)
+        })
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    out_df.to_csv(out_path, index=False)
-    print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()} and {len(nsdf):,} rows to {nsdf_path.resolve()}")
+        out_df.to_csv(out_path, index=False)
+        print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()} and {len(nsdf):,} rows to {nsdf_path.resolve()}")
 
 
 if __name__ == "__main__":
-    main()
-
-
-
-
+    SectorCapacityGenerator().start(sys.argv[1:])

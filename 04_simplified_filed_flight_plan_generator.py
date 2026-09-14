@@ -44,7 +44,7 @@ from __future__ import annotations
 import argparse
 import csv
 from pathlib import Path
-from typing import Dict, Tuple, List
+from typing import Dict, Sequence, Tuple, List
 from math import ceil
 import sys
 from collections import defaultdict
@@ -52,6 +52,7 @@ import time
 import numpy as np
 import pandas as pd
 import networkx as nx
+from stage_interfaces import FiledFlightPlanStage
 
 
 # -------------------------
@@ -567,7 +568,7 @@ def generate_filed_plans(
 # -------------------------
 # CLI
 # -------------------------
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate filed flight plan trajectories on the navgraph.")
     p.add_argument("--data-dir", type=Path, required=True,
                    help="Folder containing flights.csv and aircrafts.csv|aircraft.csv.")
@@ -581,185 +582,201 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--resample-seed", type=int, default=42,
                    help="seed for re-drawing the destination of a flight that does not fit the "
                         "window; keep it tied to the dataset seed for reproducibility")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
-def main():
-    args = parse_args()
-    if not args.data_dir.exists():
-        raise FileNotFoundError(f"data directory not found: {args.data_dir}")
-    if not args.navgraph_dir.exists():
-        raise FileNotFoundError(f"navgraph directory not found: {args.navgraph_dir}")
+class FiledFlightPlanGenerator(FiledFlightPlanStage):
+    r"""The shipped stage 04: route each flight over the graph and time-stamp it.
 
-    G_base, ident_to_vid, vid_to_ident, nodes_are_int = _load_navgraph(args.navgraph_dir)
+    This is the reference implementation of
+    :class:`stage_interfaces.FiledFlightPlanStage`; that class's docstring is the
+    contract — ``filed_flights.csv``, the 24-hour window, adjacency, airport
+    endpoints, and the whole-timestep separation between two legs of one
+    airframe.
 
-    flights = _load_flights(args.data_dir)
-    aircraft_speed = _load_aircrafts(args.data_dir)
+    Note the stage is **not idempotent**: it rewrites ``flights.csv`` and
+    ``aircrafts.csv`` in place, so a re-run must start from stage 01.
 
-    df, flights = generate_filed_plans(
-        G_base, ident_to_vid, vid_to_ident, nodes_are_int,
-        flights, aircraft_speed,
-        time_granularity = args.time_granularity,
-        default_speed_kts=args.default_speed_kts,
-        considered_timespan=args.considered_timespan,
-        resample_seed=args.resample_seed,
-    )
+    ``run_pipeline.py`` reaches this code through
+    ``stage_interfaces.DefaultFiledFlightPlan``, which spawns the script out of
+    process. To select this class by name instead::
 
-    max_time = args.time_granularity * args.considered_timespan
+        python run_pipeline.py --config <cfg> --stage-impl \
+            filedplans=04_simplified_filed_flight_plan_generator.py:FiledFlightPlanGenerator
+    """
 
-    new_aircrafts = []
+    def start(self, argv: Sequence[str]) -> None:
+        args = parse_args(list(argv))
+        if not args.data_dir.exists():
+            raise FileNotFoundError(f"data directory not found: {args.data_dir}")
+        if not args.navgraph_dir.exists():
+            raise FileNotFoundError(f"navgraph directory not found: {args.navgraph_dir}")
 
-    # Handle potential overlapping flights:
-    for aircraft in list(set(flights["aircraft_id"])):
-        aircraft_flights = flights[flights["aircraft_id"] == aircraft]
-        if aircraft_flights.shape[0] == 1:
-            # If only 1 flight, then there cannot be an issue of overlapping flights
-            continue
+        G_base, ident_to_vid, vid_to_ident, nodes_are_int = _load_navgraph(args.navgraph_dir)
 
-        print(aircraft)
+        flights = _load_flights(args.data_dir)
+        aircraft_speed = _load_aircrafts(args.data_dir)
 
-        new_aircraft_offset = 0
+        df, flights = generate_filed_plans(
+            G_base, ident_to_vid, vid_to_ident, nodes_are_int,
+            flights, aircraft_speed,
+            time_granularity = args.time_granularity,
+            default_speed_kts=args.default_speed_kts,
+            considered_timespan=args.considered_timespan,
+            resample_seed=args.resample_seed,
+        )
 
-        aircraft_copies = []
-        new_aircraft_flights = []
+        max_time = args.time_granularity * args.considered_timespan
+
+        new_aircrafts = []
+
+        # Handle potential overlapping flights:
+        for aircraft in list(set(flights["aircraft_id"])):
+            aircraft_flights = flights[flights["aircraft_id"] == aircraft]
+            if aircraft_flights.shape[0] == 1:
+                # If only 1 flight, then there cannot be an issue of overlapping flights
+                continue
+
+            print(aircraft)
+
+            new_aircraft_offset = 0
+
+            aircraft_copies = []
+            new_aircraft_flights = []
         
-        aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
-        for index in range(1,aircraft_flights.shape[0]):
+            aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
+            for index in range(1,aircraft_flights.shape[0]):
 
-            prev_flight_id = aircraft_flights.iloc[index-1,0]
-            cur_flight_id = aircraft_flights.iloc[index,0]
+                prev_flight_id = aircraft_flights.iloc[index-1,0]
+                cur_flight_id = aircraft_flights.iloc[index,0]
 
-            prev_flight = df[df["Flight_ID"] == prev_flight_id]
-            cur_flight = df[df["Flight_ID"] == cur_flight_id]
+                prev_flight = df[df["Flight_ID"] == prev_flight_id]
+                cur_flight = df[df["Flight_ID"] == cur_flight_id]
             
-            if len(prev_flight["Time"]) > 0:
-                prev_flight_max = max(prev_flight["Time"])
-            else:
-                prev_flight_max = 0
+                if len(prev_flight["Time"]) > 0:
+                    prev_flight_max = max(prev_flight["Time"])
+                else:
+                    prev_flight_max = 0
 
-            if len(cur_flight["Time"]) > 0:
-                cur_flight_min = min(cur_flight["Time"])
-            else:
-                cur_flight_min = 1
+                if len(cur_flight["Time"]) > 0:
+                    cur_flight_min = min(cur_flight["Time"])
+                else:
+                    cur_flight_min = 1
 
-            if prev_flight_max >= cur_flight_min:
-                diff_needed = (prev_flight_max - cur_flight_min) + 1
-                indices_cur_flight = df.index[df["Flight_ID"] == cur_flight_id].tolist()
-                df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] + diff_needed
+                if prev_flight_max >= cur_flight_min:
+                    diff_needed = (prev_flight_max - cur_flight_min) + 1
+                    indices_cur_flight = df.index[df["Flight_ID"] == cur_flight_id].tolist()
+                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] + diff_needed
 
-                if max(df.loc[indices_cur_flight,"Time"]) > max_time:
+                    if max(df.loc[indices_cur_flight,"Time"]) > max_time:
 
-                    new_aircraft_id = aircraft + f"_{str(new_aircraft_offset)}"
+                        new_aircraft_id = aircraft + f"_{str(new_aircraft_offset)}"
 
-                    # The forward shift above sequences this flight after the previous leg of
-                    # the same aircraft. If that pushes it past the window we give the flight a
-                    # fresh aircraft instead and undo the shift EXACTLY -- subtracting
-                    # max(over, diff_needed) as before could take the flight below its own
-                    # original departure slot and hence below t=0, violating the contract.
-                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff_needed
+                        # The forward shift above sequences this flight after the previous leg of
+                        # the same aircraft. If that pushes it past the window we give the flight a
+                        # fresh aircraft instead and undo the shift EXACTLY -- subtracting
+                        # max(over, diff_needed) as before could take the flight below its own
+                        # original departure slot and hence below t=0, violating the contract.
+                        df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff_needed
                     
-                    aircraft_copies.append((aircraft,new_aircraft_id))
-                    new_aircraft_flights.append((new_aircraft_id,cur_flight_id))
+                        aircraft_copies.append((aircraft,new_aircraft_id))
+                        new_aircraft_flights.append((new_aircraft_id,cur_flight_id))
 
-                    new_aircraft_offset += 1
+                        new_aircraft_offset += 1
 
-        for new_aircraft_id, flight_id in new_aircraft_flights:
-            indices_flights = flights.index[flights["flight_id"]==flight_id]
-            flights.loc[indices_flights,"aircraft_id"] = new_aircraft_id
+            for new_aircraft_id, flight_id in new_aircraft_flights:
+                indices_flights = flights.index[flights["flight_id"]==flight_id]
+                flights.loc[indices_flights,"aircraft_id"] = new_aircraft_id
 
-        for aircraft,new_aircraft_id in aircraft_copies:
-            speed = aircraft_speed[aircraft]
-            aircraft_speed[new_aircraft_id] = speed
+            for aircraft,new_aircraft_id in aircraft_copies:
+                speed = aircraft_speed[aircraft]
+                aircraft_speed[new_aircraft_id] = speed
    
-    # ---- AIRCRAFT-DISJOINTNESS REPAIR -------------------------------------
-    # One airplane cannot fly two legs at once. The sequencing loop above sorts a carrier's
-    # flights by `start_slot` but compares TRAJECTORY times, and the two diverge as soon as a
-    # leg is shifted (or resampled), so some overlaps survive it -- 45 per 1000 flights in the
-    # delivered DACH TG=4 instance, 10 after the window fix alone.
-    #
-    # Enforce the invariant directly instead of trying to make the ordering exact: walk each
-    # aircraft's legs in true trajectory order and move any leg that starts before the previous
-    # one ends onto a fresh copy of that aircraft. Splitting rather than shifting keeps every
-    # timestep inside the window, so this cannot reintroduce a contract violation.
-    span = df.groupby("Flight_ID")["Time"].agg(["min", "max"])
-    fid2ac = dict(zip(flights["flight_id"], flights["aircraft_id"]))
-    by_ac = defaultdict(list)
-    for fid, r in span.iterrows():
-        by_ac[fid2ac.get(fid)].append((int(r["min"]), int(r["max"]), fid))
+        # ---- AIRCRAFT-DISJOINTNESS REPAIR -------------------------------------
+        # One airplane cannot fly two legs at once. The sequencing loop above sorts a carrier's
+        # flights by `start_slot` but compares TRAJECTORY times, and the two diverge as soon as a
+        # leg is shifted (or resampled), so some overlaps survive it -- 45 per 1000 flights in the
+        # delivered DACH TG=4 instance, 10 after the window fix alone.
+        #
+        # Enforce the invariant directly instead of trying to make the ordering exact: walk each
+        # aircraft's legs in true trajectory order and move any leg that starts before the previous
+        # one ends onto a fresh copy of that aircraft. Splitting rather than shifting keeps every
+        # timestep inside the window, so this cannot reintroduce a contract violation.
+        span = df.groupby("Flight_ID")["Time"].agg(["min", "max"])
+        fid2ac = dict(zip(flights["flight_id"], flights["aircraft_id"]))
+        by_ac = defaultdict(list)
+        for fid, r in span.iterrows():
+            by_ac[fid2ac.get(fid)].append((int(r["min"]), int(r["max"]), fid))
 
-    split = {}
-    extra_speed = {}
-    for ac, legs in by_ac.items():
-        if ac is None or len(legs) < 2:
-            continue
-        legs.sort()
-        busy_until = legs[0][1]
-        n_copy = 0
-        for lo, hi, fid in legs[1:]:
-            # A leg must start at least one timestep AFTER the previous one ends: arrive at t=5,
-            # depart no earlier than t=6. Sharing the boundary slot would put the aircraft at two
-            # navpoints in the same timestep and count it twice in that slot's occupancy, so
-            # `lo == busy_until` is a violation, not a rounding artefact. This matches the
-            # sequencing loop in main(), which already treats `prev_max >= cur_min` as a clash.
-            if lo <= busy_until:                     # would overlap or touch -> own aircraft copy
-                n_copy += 1
-                new_ac = f"{ac}_D{n_copy}"
-                split[fid] = new_ac
-                extra_speed[new_ac] = aircraft_speed.get(str(ac), args.default_speed_kts)
-            else:
-                busy_until = hi
-    if split:
-        flights["aircraft_id"] = flights.apply(
-            lambda r: split.get(r["flight_id"], r["aircraft_id"]), axis=1)
-        for k, v in extra_speed.items():
-            aircraft_speed[k] = v
-        print(f"[INFO] {len(split)} legs moved onto fresh aircraft copies so that no airplane "
-              f"flies two legs simultaneously.", file=sys.stderr)
+        split = {}
+        extra_speed = {}
+        for ac, legs in by_ac.items():
+            if ac is None or len(legs) < 2:
+                continue
+            legs.sort()
+            busy_until = legs[0][1]
+            n_copy = 0
+            for lo, hi, fid in legs[1:]:
+                # A leg must start at least one timestep AFTER the previous one ends: arrive at t=5,
+                # depart no earlier than t=6. Sharing the boundary slot would put the aircraft at two
+                # navpoints in the same timestep and count it twice in that slot's occupancy, so
+                # `lo == busy_until` is a violation, not a rounding artefact. This matches the
+                # sequencing loop in main(), which already treats `prev_max >= cur_min` as a clash.
+                if lo <= busy_until:                     # would overlap or touch -> own aircraft copy
+                    n_copy += 1
+                    new_ac = f"{ac}_D{n_copy}"
+                    split[fid] = new_ac
+                    extra_speed[new_ac] = aircraft_speed.get(str(ac), args.default_speed_kts)
+                else:
+                    busy_until = hi
+        if split:
+            flights["aircraft_id"] = flights.apply(
+                lambda r: split.get(r["flight_id"], r["aircraft_id"]), axis=1)
+            for k, v in extra_speed.items():
+                aircraft_speed[k] = v
+            print(f"[INFO] {len(split)} legs moved onto fresh aircraft copies so that no airplane "
+                  f"flies two legs simultaneously.", file=sys.stderr)
 
-    # ---- CONTRACT GUARD ---------------------------------------------------
-    # The parsed instances the optimizers consume assume 0 <= t <= time_granularity * 24.
-    # Enforce it here, at the single point where the filed plan is written, so no combination
-    # of window truncation and aircraft re-sequencing can emit an out-of-range timestep.
-    before = len(df)
-    lo, hi = int(df["Time"].min()), int(df["Time"].max())
-    df = df[(df["Time"] >= 0) & (df["Time"] <= max_time)]
-    if len(df) != before:
-        print(f"[WARN] contract guard dropped {before - len(df)} of {before} trajectory points "
-              f"outside [0, {max_time}] (observed range [{lo}, {hi}]).", file=sys.stderr)
-    empty = set(flights["flight_id"]) - set(df["Flight_ID"])
-    if empty:
-        raise RuntimeError(
-            f"{len(empty)} flights lost every trajectory point to the contract guard, so the "
-            f"instance would contain fewer flights than requested. This is a bug in the window "
-            f"handling above, not a data property -- do not ship the result.")
+        # ---- CONTRACT GUARD ---------------------------------------------------
+        # The parsed instances the optimizers consume assume 0 <= t <= time_granularity * 24.
+        # Enforce it here, at the single point where the filed plan is written, so no combination
+        # of window truncation and aircraft re-sequencing can emit an out-of-range timestep.
+        before = len(df)
+        lo, hi = int(df["Time"].min()), int(df["Time"].max())
+        df = df[(df["Time"] >= 0) & (df["Time"] <= max_time)]
+        if len(df) != before:
+            print(f"[WARN] contract guard dropped {before - len(df)} of {before} trajectory points "
+                  f"outside [0, {max_time}] (observed range [{lo}, {hi}]).", file=sys.stderr)
+        empty = set(flights["flight_id"]) - set(df["Flight_ID"])
+        if empty:
+            raise RuntimeError(
+                f"{len(empty)} flights lost every trajectory point to the contract guard, so the "
+                f"instance would contain fewer flights than requested. This is a bug in the window "
+                f"handling above, not a data property -- do not ship the result.")
 
-    # Requested count must be met EXACTLY (Alexander, 2026-09-08).
-    n_traj, n_decl = df["Flight_ID"].nunique(), flights["flight_id"].nunique()
-    if n_traj != n_decl:
-        raise RuntimeError(f"flight-count mismatch: {n_traj} in filed_flights.csv vs {n_decl} "
-                           f"in flights.csv")
-    if not df.empty:
-        assert df["Time"].min() >= 0 and df["Time"].max() <= max_time, "contract guard failed"
-    print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}].")
+        # Requested count must be met EXACTLY (Alexander, 2026-09-08).
+        n_traj, n_decl = df["Flight_ID"].nunique(), flights["flight_id"].nunique()
+        if n_traj != n_decl:
+            raise RuntimeError(f"flight-count mismatch: {n_traj} in filed_flights.csv vs {n_decl} "
+                               f"in flights.csv")
+        if not df.empty:
+            assert df["Time"].min() >= 0 and df["Time"].max() <= max_time, "contract guard failed"
+        print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}].")
 
-    out_path = args.data_dir / "filed_flights.csv"
-    df.to_csv(out_path, index=False)
+        out_path = args.data_dir / "filed_flights.csv"
+        df.to_csv(out_path, index=False)
     
-    out_path = args.data_dir / "flights.csv"
-    flights.to_csv(out_path, index=False)
+        out_path = args.data_dir / "flights.csv"
+        flights.to_csv(out_path, index=False)
 
-    out_path = args.data_dir / "aircrafts.csv"
-    with open(out_path, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["aircraft_id", "speed_kts"])
-        writer.writerows(aircraft_speed.items())
+        out_path = args.data_dir / "aircrafts.csv"
+        with open(out_path, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["aircraft_id", "speed_kts"])
+            writer.writerows(aircraft_speed.items())
 
-    print(f"Done. Wrote {len(df):,} trajectory rows to {out_path.resolve()}")
+        print(f"Done. Wrote {len(df):,} trajectory rows to {out_path.resolve()}")
 
 
 if __name__ == "__main__":
-    main()
-
-
-
-
+    FiledFlightPlanGenerator().start(sys.argv[1:])

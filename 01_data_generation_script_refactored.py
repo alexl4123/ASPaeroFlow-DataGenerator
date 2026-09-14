@@ -22,13 +22,15 @@ import heapq
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Sequence, Tuple
 import json
 
 import numpy as np
 import pandas as pd
 
 import random
+import sys
+from stage_interfaces import FlightScheduleStage
 
 
 # -------------------------
@@ -370,7 +372,7 @@ def generate_synthetic_day(
 # CLI
 # -------------------------
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a synthetic flight day from model artifacts.")
     p.add_argument("--model-dir", type=Path, default=Path("./model_out"), help="Directory with exported artifacts")
     p.add_argument("--day", type=str, default="2019-06-15", help="UTC day YYYY-MM-DD to simulate")
@@ -383,97 +385,114 @@ def parse_args() -> argparse.Namespace:
                    help="Write files directly into the parent folder of --out (disable auto-named subfolder).")
     p.add_argument("--timezone", type=str, default="0", help="Timezone (0 is Greenwich).")
 
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
-def main():
-    args = parse_args()
-    model_dir = args.model_dir
-    if not model_dir.exists():
-        raise FileNotFoundError(f"Model directory not found: {model_dir}")
+class FlightScheduleSampler(FlightScheduleStage):
+    r"""The shipped stage 01: sample a flight schedule from the fitted model.
 
-    bin_min = args.bin_min or load_bin_minutes(model_dir, default=60)
+    This is the reference implementation of
+    :class:`stage_interfaces.FlightScheduleStage`; that class's docstring is the
+    contract — ``flights.csv``, ``aircrafts.csv``, ``run_config.json``, and the
+    invariants each must satisfy.
 
-    airport_bins = load_airport_bins(model_dir, bin_min)
-    od_time_model = load_od_time_model(model_dir)
-    tat_dist = load_tat(model_dir)
-    od_dur_dist, dur_dist, glob_spd = load_od_durations(model_dir)
-    global_dest_freq = load_global_dest_freq(model_dir)
+    ``run_pipeline.py`` reaches this code through
+    ``stage_interfaces.DefaultFlightSchedule``, which spawns the script out of
+    process. To select this class by name instead::
 
-    flights_df, aircrafts_df = generate_synthetic_day(
-        day_str=args.day,
-        airport_bins=airport_bins,
-        od_time_model=od_time_model,
-        global_dest_freq=global_dest_freq,
-        tat_dist=tat_dist,
-        od_dur_dist=od_dur_dist,
-        dur_dist=dur_dist,
-        glob_spd=glob_spd,
-        bin_min=bin_min,
-        custom_tz = float(args.timezone),
-        scale=args.scale,
-        flights = args.flights,
-        seed=args.seed,
-    )
+        python run_pipeline.py --config <cfg> --stage-impl \
+            flights=01_data_generation_script_refactored.py:FlightScheduleSampler
+    """
 
-    if flights_df.shape[0] <= 1:
-        print(f"[WARN] - NOT ENOUGH FLIGHTS RECORDED: {flights_df.shape[0]}")
-        quit(0)
+    def start(self, argv: Sequence[str]) -> None:
+        args = parse_args(list(argv))
+        model_dir = args.model_dir
+        if not model_dir.exists():
+            raise FileNotFoundError(f"Model directory not found: {model_dir}")
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    # --- build auto-named experiment directory ---
-    if args.flat_out:
-        exp_dir = args.out_dir
-        out_flights = exp_dir / "flights.csv"
-    else:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
-        tag = (
-            f"day-{args.day}"
-            f"_scale{args.scale:g}"
-            f"_bin{bin_min}"
-            f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
-            f"_model-{args.model_dir.name}"
+        bin_min = args.bin_min or load_bin_minutes(model_dir, default=60)
+
+        airport_bins = load_airport_bins(model_dir, bin_min)
+        od_time_model = load_od_time_model(model_dir)
+        tat_dist = load_tat(model_dir)
+        od_dur_dist, dur_dist, glob_spd = load_od_durations(model_dir)
+        global_dest_freq = load_global_dest_freq(model_dir)
+
+        flights_df, aircrafts_df = generate_synthetic_day(
+            day_str=args.day,
+            airport_bins=airport_bins,
+            od_time_model=od_time_model,
+            global_dest_freq=global_dest_freq,
+            tat_dist=tat_dist,
+            od_dur_dist=od_dur_dist,
+            dur_dist=dur_dist,
+            glob_spd=glob_spd,
+            bin_min=bin_min,
+            custom_tz = float(args.timezone),
+            scale=args.scale,
+            flights = args.flights,
+            seed=args.seed,
         )
-        exp_dir = args.out_dir / f"{ts}__{tag}"
-        out_flights = exp_dir / "flights.csv"
-    exp_dir.mkdir(parents=True, exist_ok=True)
-    out_dir_str = str(args.out_dir)
-    # persist full CLI + resolved values
-    with open(exp_dir / "run_config.json", "w") as fh:
-        cfg = {}
-        var_dict = dict(vars(args))
-        for var in var_dict.keys():
-            cfg[var] = str(var_dict[var])
-        cfg["model_dir"] = str(args.model_dir)
-        cfg["out"] = out_dir_str
-        cfg["resolved_bin_min"] = bin_min
-        cfg["number_flights"] = flights_df.shape[0]
+
+        if flights_df.shape[0] <= 1:
+            print(f"[WARN] - NOT ENOUGH FLIGHTS RECORDED: {flights_df.shape[0]}")
+            quit(0)
+
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        # --- build auto-named experiment directory ---
+        if args.flat_out:
+            exp_dir = args.out_dir
+            out_flights = exp_dir / "flights.csv"
+        else:
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+            tag = (
+                f"day-{args.day}"
+                f"_scale{args.scale:g}"
+                f"_bin{bin_min}"
+                f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
+                f"_model-{args.model_dir.name}"
+            )
+            exp_dir = args.out_dir / f"{ts}__{tag}"
+            out_flights = exp_dir / "flights.csv"
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        out_dir_str = str(args.out_dir)
+        # persist full CLI + resolved values
+        with open(exp_dir / "run_config.json", "w") as fh:
+            cfg = {}
+            var_dict = dict(vars(args))
+            for var in var_dict.keys():
+                cfg[var] = str(var_dict[var])
+            cfg["model_dir"] = str(args.model_dir)
+            cfg["out"] = out_dir_str
+            cfg["resolved_bin_min"] = bin_min
+            cfg["number_flights"] = flights_df.shape[0]
         
-        json.dump(cfg, fh, indent=2)
+            json.dump(cfg, fh, indent=2)
 
-    # before saving flights.csv
-    s = flights_df["departure_time"].astype(str).str.strip()
-    # clean any legacy ".Z" artifacts just in case
-    s = s.str.replace(r"\.Z$", "Z", regex=True)
+        # before saving flights.csv
+        s = flights_df["departure_time"].astype(str).str.strip()
+        # clean any legacy ".Z" artifacts just in case
+        s = s.str.replace(r"\.Z$", "Z", regex=True)
 
-    # Localize or convert the pandas datetime objects based on the dynamic timezone
-    dt_series = pd.to_datetime(s, format="mixed", errors="raise")
+        # Localize or convert the pandas datetime objects based on the dynamic timezone
+        dt_series = pd.to_datetime(s, format="mixed", errors="raise")
 
-    # pandas interprets a bare int as *seconds*, not hours, so build an explicit fixed offset.
-    out_tz = timezone(timedelta(hours=float(args.timezone)))
-    flights_df["departure_time"] = (
-        dt_series.dt.tz_convert(out_tz) if dt_series.dt.tz is not None
-        else dt_series.dt.tz_localize(out_tz)
-    )
+        # pandas interprets a bare int as *seconds*, not hours, so build an explicit fixed offset.
+        out_tz = timezone(timedelta(hours=float(args.timezone)))
+        flights_df["departure_time"] = (
+            dt_series.dt.tz_convert(out_tz) if dt_series.dt.tz is not None
+            else dt_series.dt.tz_localize(out_tz)
+        )
 
-    # choose how you want to serialize (seconds precision here)
-    flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")
+        # choose how you want to serialize (seconds precision here)
+        flights_df.to_csv(out_flights, index=False, date_format="%Y-%m-%dT%H:%M:%S%z")
 
-    aircrafts_path = exp_dir / "aircrafts.csv"
-    aircrafts_df.to_csv(aircrafts_path, index=False)
+        aircrafts_path = exp_dir / "aircrafts.csv"
+        aircrafts_df.to_csv(aircrafts_path, index=False)
 
-    print(f"Wrote {len(flights_df):,} flights to {str(out_flights)}")
-    print(f"Wrote {len(aircrafts_df):,} aircraft rows to {aircrafts_path.resolve()}")
+        print(f"Wrote {len(flights_df):,} flights to {str(out_flights)}")
+        print(f"Wrote {len(aircrafts_df):,} aircraft rows to {aircrafts_path.resolve()}")
+
 
 if __name__ == "__main__":
-    main()
+    FlightScheduleSampler().start(sys.argv[1:])

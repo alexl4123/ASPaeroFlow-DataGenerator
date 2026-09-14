@@ -57,12 +57,14 @@ import os
 import re
 from pathlib import Path
 from time import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 import networkx as nx
+import sys
+from stage_interfaces import NavigationGraphStage
 
 # -------------------------
 # Helpers: progress
@@ -1284,7 +1286,7 @@ def ensure_connected(latlonalt: np.ndarray,
 # -------------------------
 # CLI
 # -------------------------
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     def str2bool(v: str) -> bool:
         if isinstance(v, bool): return v
         v = v.strip().lower()
@@ -1346,242 +1348,260 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--grid-rect-filter", type=str, default="true",
                    help="If true and grid mode is enabled, filter vertices by the region bbox (not polygon). Default true.")
 
-    return p.parse_args()
+    return p.parse_args(argv)
 
 # -------------------------
 # Main
 # -------------------------
-def main():
-    args = parse_args()
-    args.icao_only = True if str(args.icao_only).strip().lower() in ("true","t","1","yes","on") else False
-    airport_include = parse_airport_include_spec(args.airport_include)
+class NavigationGraphBuilder(NavigationGraphStage):
+    r"""The shipped stage 02: build the navigation graph.
 
-    # Resolve connectivity flag early (used in tag)
-    do_connect = str(args.enforce_connected).strip().lower() in ("true","t","1","yes","on")
+    This is the reference implementation of
+    :class:`stage_interfaces.NavigationGraphStage`; that class's docstring names
+    the two files this must write (``vertices.csv``, ``edges.csv``), their
+    columns, and the invariants — undirected edges listed once, ``D`` in metres
+    and > 0, unique ``IDENTIFIER``, every airport a reachable ``IS_AIRPORT``
+    vertex.
 
-    # --- build auto-named experiment directory ---
-    out_root = args.out_dir
-    out_root.mkdir(parents=True, exist_ok=True)
-    if args.flat_out:
-        exp_dir = out_root
-    else:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
-        tag = (
-            f"crit-{args.criterion}"
-            f"_max{int(args.max_edge_km)}km"
-            f"_idx-{args.neighbor_index}"
-            f"_conn{'T' if do_connect else 'F'}knn{int(args.centroid_knn)}"
-            f"_icao{'T' if args.icao_only else 'F'}"
-            f"_apinc{len(airport_include) if airport_include else 0}"
-            f"_nav-{args.navdir.name}_ap-{args.ourairports.name}"
-        )
-        exp_dir = out_root / f"{ts}__{tag}"
-    exp_dir.mkdir(parents=True, exist_ok=True)
- 
+    ``run_pipeline.py`` reaches this code through
+    ``stage_interfaces.DefaultNavigationGraph``, which spawns the script out of
+    process. To select this class by name instead::
 
-    # 1) Load config regions (polygons + names)
-    region_items = load_region_items_from_config(args.config) if args.config else []
-    regions = [poly for (_, poly) in region_items]
-    if regions:
-        print(f"[1/6] Loaded {len(regions)} geographic region(s) from {args.config}")
+        python run_pipeline.py --config <cfg> --stage-impl \
+            navgraph=02_graph_generator.py:NavigationGraphBuilder
+    """
 
-    # Resolve grid mode
-    grid_enabled = str(args.grid_navpoints).strip().lower() in ("true","t","1","yes","on")
-    if grid_enabled:
-        if int(args.grid_nx) < 1 or int(args.grid_ny) < 1:
-            raise ValueError("Grid mode enabled but --grid-nx/--grid-ny are not >= 1.")
-        # Determine bboxes (explicit overrides config)
-        grid_bboxes: List[Tuple[float,float,float,float]] = []
-        grid_region_names: List[str] = []
-        if args.grid_bounds is not None:
-            lat_s, lon_w, lat_n, lon_e = [float(x) for x in args.grid_bounds]
-            lat_min, lat_max = (lat_s, lat_n) if lat_s <= lat_n else (lat_n, lat_s)
-            lon_min, lon_max = (lon_w, lon_e) if lon_w <= lon_e else (lon_e, lon_w)
-            grid_bboxes = [(lat_min, lat_max, lon_min, lon_max)]
-            grid_region_names = ["BBOX"]
+    def start(self, argv: Sequence[str]) -> None:
+        args = parse_args(list(argv))
+        args.icao_only = True if str(args.icao_only).strip().lower() in ("true","t","1","yes","on") else False
+        airport_include = parse_airport_include_spec(args.airport_include)
+
+        # Resolve connectivity flag early (used in tag)
+        do_connect = str(args.enforce_connected).strip().lower() in ("true","t","1","yes","on")
+
+        # --- build auto-named experiment directory ---
+        out_root = args.out_dir
+        out_root.mkdir(parents=True, exist_ok=True)
+        if args.flat_out:
+            exp_dir = out_root
         else:
-            if not region_items:
-                raise ValueError("Grid mode enabled but no --grid-bounds provided and no regions found in --config.")
-            # Optional: choose one region by name
-            if args.grid_region_name:
-                want = str(args.grid_region_name).strip().lower()
-                region_items_sel = [(n,p) for (n,p) in region_items if str(n).strip().lower() == want]
-                if not region_items_sel:
-                    known = ", ".join([n for (n,_) in region_items])
-                    raise ValueError(f"--grid-region-name '{args.grid_region_name}' not found. Known: {known}")
-                region_items_use = region_items_sel
-            else:
-                region_items_use = region_items
-            for (nm, poly) in region_items_use:
-                grid_bboxes.append(_bbox_from_poly(poly))
-                grid_region_names.append(str(nm))
-
-        # Region filter mode in grid: bbox by default
-        region_filter_use_bbox = str(args.grid_rect_filter).strip().lower() in ("true","t","1","yes","on")
-        region_bboxes = grid_bboxes if region_filter_use_bbox else None
-
-
-    # 2) Load OD pairs & aircrafts (optional)
-    od_df = load_od_pairs(args.od_file)
-    if not od_df.empty:
-        print(f"[2/6] Loaded OD pairs: {len(od_df):,} rows (restricting airports to observed ICAOs).")
-
-    # 3) Build vertices (airports + navpoints OR airports + grid-navpoints) with region filtering
-    print(f"[3/6] Loading airports and navpoints...")
-    alt_values_raw = parse_altitude_spec(args.altitude)
-    if not alt_values_raw:
-     alt_values_raw = [0.0]
-    # Sort levels by actual altitude (ascending), remove duplicates
-    alt_values_raw = sorted({float(x) for x in alt_values_raw})
-    alt_values_m = [to_altitude_m(v, args.altitude_unit) for v in alt_values_raw]
-    n_levels = len(alt_values_raw)
-    ref_alt_m = float(np.mean(alt_values_m)) if alt_values_m else 0.0
-    print(f"[altitude] levels_raw={alt_values_raw} unit={args.altitude_unit} -> meters={alt_values_m} (ref={ref_alt_m:.3f} m)")
-
-    if airport_include:
-        print(f"[3/6] Airport include-list enabled: {len(airport_include)} ICAO(s)")
-
-    # Build a BASE vertex set (single navpoint layer) used for base-edge computation.
-    # Airports are always at altitude 0 in build_vertices.
-    vertices_base = build_vertices(
-        airports_csv=args.ourairports,
-        nav_dir=args.navdir,
-        regions=regions,
-        icao_only=args.icao_only,
-        od_filter=od_df if not od_df.empty else None,
-        altitude_m = ref_alt_m,
-        airport_include = airport_include,
-        airport_types = _parse_airport_types(args.airport_types),
-        grid_only=bool(grid_enabled),
-        grid_nx=int(args.grid_nx) if grid_enabled else 0,
-        grid_ny=int(args.grid_ny) if grid_enabled else 0,
-        grid_bboxes=(grid_bboxes if grid_enabled else None),
-        grid_prefix=str(args.grid_prefix or "GRID"),
-        grid_region_names=(grid_region_names if grid_enabled else None),
-        region_filter_use_bbox=(region_filter_use_bbox if grid_enabled else False),
-        region_bboxes=(region_bboxes if grid_enabled else None),
-        min_dist_vertices_km=float(args.min_dist_vertices_km),
-    )
-    N_base = len(vertices_base)
-    if N_base == 0:
-        raise RuntimeError("No vertices after filtering. Check inputs/regions.")
-    print(f"      Kept {N_base:,} base vertices.")
-
-    latlonalt_base = vertices_base[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
-
-    if grid_enabled:
-        # Grid override: enforce local 8-neighborhood connectivity between grid points only.
-        # Airports remain in vertices.csv but are excluded from grid adjacency edges.
-        print("[5/6] Grid mode enabled: building 8-neighborhood edges between grid navpoints (no RNG/Gabriel).")
-        edges_base = build_grid_edges_8nb(vertices_base)
-        print(f"      Kept edges (grid 8-neighborhood): {len(edges_base):,}")
-
-        # Attach airports to closest navpoints (to avoid detached airport components)
-        ap_attach = build_airport_to_nav_edges(
-            vertices_base,
-            k_nearest=4,
-            max_edge_m=float(args.max_edge_km) * 1000.0,
-        )
-        if ap_attach:
-            seen = {(min(i, j), max(i, j)) for (i, j, _) in edges_base}
-            added = 0
-            for (i, j, d) in ap_attach:
-                u, v = (i, j) if i < j else (j, i)
-                if (u, v) in seen:
-                    continue
-                edges_base.append((u, v, float(d)))
-                seen.add((u, v))
-                added += 1
-            print(f"      Added airport attachment edges: {added:,}")
-        # Keep step numbering stable for logs
-        print("[6/6] Skipped RNG/Gabriel edge test in grid mode.")
-    else:
-        # 5) Neighbor search (pre-candidate edges within max distance) with index
-        print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
-        nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
-            latlonalt_base, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
-        )
-        print(f"      Candidate pairs: {len(pair_list):,}")
-
-        # 6) Edge test (RNG / Gabriel)
-        print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
-        edges_base = build_edges_rng_or_gabriel(
-            latlon=latlonalt_base,
-            nbr_idx=nbr_idx,
-            nbr_dst=nbr_dst,
-            pair_list=pair_list,
-            criterion=args.criterion.lower(),
-            progress_interval_s=int(args.progress_interval),
-        )
-        print(f"      Kept edges: {len(edges_base):,}")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+            tag = (
+                f"crit-{args.criterion}"
+                f"_max{int(args.max_edge_km)}km"
+                f"_idx-{args.neighbor_index}"
+                f"_conn{'T' if do_connect else 'F'}knn{int(args.centroid_knn)}"
+                f"_icao{'T' if args.icao_only else 'F'}"
+                f"_apinc{len(airport_include) if airport_include else 0}"
+                f"_nav-{args.navdir.name}_ap-{args.ourairports.name}"
+            )
+            exp_dir = out_root / f"{ts}__{tag}"
+        exp_dir.mkdir(parents=True, exist_ok=True)
  
 
-    # 7) Enforce connectivity (optional, default on)
-    if do_connect and (not grid_enabled):
-        print("[7/7] Enforcing connectivity...")
-        edges_base, n_added = ensure_connected(
-            latlonalt=latlonalt_base,
-            edges_kept=edges_base,
-            k_centroid_nn=int(args.centroid_knn),
-            method=args.connectivity_method.lower(),
-        )
-        # quick report
-        G_final = _graph_from_edges(len(vertices_base), edges_base)
-        k_final = nx.number_connected_components(G_final)
-        print(f"      Components after: {k_final} (added {n_added} bridging edge(s))")
-    else:
+        # 1) Load config regions (polygons + names)
+        region_items = load_region_items_from_config(args.config) if args.config else []
+        regions = [poly for (_, poly) in region_items]
+        if regions:
+            print(f"[1/6] Loaded {len(regions)} geographic region(s) from {args.config}")
+
+        # Resolve grid mode
+        grid_enabled = str(args.grid_navpoints).strip().lower() in ("true","t","1","yes","on")
         if grid_enabled:
-            print("[7/7] Skipped connectivity enforcement in grid mode (grid is already connected by construction).")
+            if int(args.grid_nx) < 1 or int(args.grid_ny) < 1:
+                raise ValueError("Grid mode enabled but --grid-nx/--grid-ny are not >= 1.")
+            # Determine bboxes (explicit overrides config)
+            grid_bboxes: List[Tuple[float,float,float,float]] = []
+            grid_region_names: List[str] = []
+            if args.grid_bounds is not None:
+                lat_s, lon_w, lat_n, lon_e = [float(x) for x in args.grid_bounds]
+                lat_min, lat_max = (lat_s, lat_n) if lat_s <= lat_n else (lat_n, lat_s)
+                lon_min, lon_max = (lon_w, lon_e) if lon_w <= lon_e else (lon_e, lon_w)
+                grid_bboxes = [(lat_min, lat_max, lon_min, lon_max)]
+                grid_region_names = ["BBOX"]
+            else:
+                if not region_items:
+                    raise ValueError("Grid mode enabled but no --grid-bounds provided and no regions found in --config.")
+                # Optional: choose one region by name
+                if args.grid_region_name:
+                    want = str(args.grid_region_name).strip().lower()
+                    region_items_sel = [(n,p) for (n,p) in region_items if str(n).strip().lower() == want]
+                    if not region_items_sel:
+                        known = ", ".join([n for (n,_) in region_items])
+                        raise ValueError(f"--grid-region-name '{args.grid_region_name}' not found. Known: {known}")
+                    region_items_use = region_items_sel
+                else:
+                    region_items_use = region_items
+                for (nm, poly) in region_items_use:
+                    grid_bboxes.append(_bbox_from_poly(poly))
+                    grid_region_names.append(str(nm))
+
+            # Region filter mode in grid: bbox by default
+            region_filter_use_bbox = str(args.grid_rect_filter).strip().lower() in ("true","t","1","yes","on")
+            region_bboxes = grid_bboxes if region_filter_use_bbox else None
+
+
+        # 2) Load OD pairs & aircrafts (optional)
+        od_df = load_od_pairs(args.od_file)
+        if not od_df.empty:
+            print(f"[2/6] Loaded OD pairs: {len(od_df):,} rows (restricting airports to observed ICAOs).")
+
+        # 3) Build vertices (airports + navpoints OR airports + grid-navpoints) with region filtering
+        print(f"[3/6] Loading airports and navpoints...")
+        alt_values_raw = parse_altitude_spec(args.altitude)
+        if not alt_values_raw:
+         alt_values_raw = [0.0]
+        # Sort levels by actual altitude (ascending), remove duplicates
+        alt_values_raw = sorted({float(x) for x in alt_values_raw})
+        alt_values_m = [to_altitude_m(v, args.altitude_unit) for v in alt_values_raw]
+        n_levels = len(alt_values_raw)
+        ref_alt_m = float(np.mean(alt_values_m)) if alt_values_m else 0.0
+        print(f"[altitude] levels_raw={alt_values_raw} unit={args.altitude_unit} -> meters={alt_values_m} (ref={ref_alt_m:.3f} m)")
+
+        if airport_include:
+            print(f"[3/6] Airport include-list enabled: {len(airport_include)} ICAO(s)")
+
+        # Build a BASE vertex set (single navpoint layer) used for base-edge computation.
+        # Airports are always at altitude 0 in build_vertices.
+        vertices_base = build_vertices(
+            airports_csv=args.ourairports,
+            nav_dir=args.navdir,
+            regions=regions,
+            icao_only=args.icao_only,
+            od_filter=od_df if not od_df.empty else None,
+            altitude_m = ref_alt_m,
+            airport_include = airport_include,
+            airport_types = _parse_airport_types(args.airport_types),
+            grid_only=bool(grid_enabled),
+            grid_nx=int(args.grid_nx) if grid_enabled else 0,
+            grid_ny=int(args.grid_ny) if grid_enabled else 0,
+            grid_bboxes=(grid_bboxes if grid_enabled else None),
+            grid_prefix=str(args.grid_prefix or "GRID"),
+            grid_region_names=(grid_region_names if grid_enabled else None),
+            region_filter_use_bbox=(region_filter_use_bbox if grid_enabled else False),
+            region_bboxes=(region_bboxes if grid_enabled else None),
+            min_dist_vertices_km=float(args.min_dist_vertices_km),
+        )
+        N_base = len(vertices_base)
+        if N_base == 0:
+            raise RuntimeError("No vertices after filtering. Check inputs/regions.")
+        print(f"      Kept {N_base:,} base vertices.")
+
+        latlonalt_base = vertices_base[["LAT","LON","ALTITUDE"]].to_numpy(dtype=float)
+
+        if grid_enabled:
+            # Grid override: enforce local 8-neighborhood connectivity between grid points only.
+            # Airports remain in vertices.csv but are excluded from grid adjacency edges.
+            print("[5/6] Grid mode enabled: building 8-neighborhood edges between grid navpoints (no RNG/Gabriel).")
+            edges_base = build_grid_edges_8nb(vertices_base)
+            print(f"      Kept edges (grid 8-neighborhood): {len(edges_base):,}")
+
+            # Attach airports to closest navpoints (to avoid detached airport components)
+            ap_attach = build_airport_to_nav_edges(
+                vertices_base,
+                k_nearest=4,
+                max_edge_m=float(args.max_edge_km) * 1000.0,
+            )
+            if ap_attach:
+                seen = {(min(i, j), max(i, j)) for (i, j, _) in edges_base}
+                added = 0
+                for (i, j, d) in ap_attach:
+                    u, v = (i, j) if i < j else (j, i)
+                    if (u, v) in seen:
+                        continue
+                    edges_base.append((u, v, float(d)))
+                    seen.add((u, v))
+                    added += 1
+                print(f"      Added airport attachment edges: {added:,}")
+            # Keep step numbering stable for logs
+            print("[6/6] Skipped RNG/Gabriel edge test in grid mode.")
         else:
-            print("[7/7] Skipped connectivity enforcement by user request.")
+            # 5) Neighbor search (pre-candidate edges within max distance) with index
+            print(f"[5/6] Neighbor search within {args.max_edge_km:g} km using '{args.neighbor_index}'...")
+            nbr_idx, nbr_dst, pair_list = _neighbors_within_maxdist_indexed(
+                latlonalt_base, max_edge_m=args.max_edge_km*1000.0, method=args.neighbor_index, progress_msg="Neighbor search"
+            )
+            print(f"      Candidate pairs: {len(pair_list):,}")
 
-    # --- Multi-flight-level expansion + edge lifting ---
-
-    vertices, idx_map = expand_vertices_with_flight_levels(
-        vertices_base,
-        level_values_raw=alt_values_raw,
-        level_values_m=alt_values_m,
-        altitude_unit=args.altitude_unit,
-    )
-    edges_kept = lift_edges_from_base(
-        vertices_base=vertices_base,
-        vertices_layered=vertices,
-        idx_map=idx_map,
-        edges_base=edges_base,
-        n_levels=n_levels,
-    )
- 
-    # 4) Save FINAL vertices.csv (layered)
-    write_vertices_csv(vertices, exp_dir)
-    print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
+            # 6) Edge test (RNG / Gabriel)
+            print(f"[6/6] Testing candidate edges with '{args.criterion}' criterion...")
+            edges_base = build_edges_rng_or_gabriel(
+                latlon=latlonalt_base,
+                nbr_idx=nbr_idx,
+                nbr_dst=nbr_dst,
+                pair_list=pair_list,
+                criterion=args.criterion.lower(),
+                progress_interval_s=int(args.progress_interval),
+            )
+            print(f"      Kept edges: {len(edges_base):,}")
  
 
+        # 7) Enforce connectivity (optional, default on)
+        if do_connect and (not grid_enabled):
+            print("[7/7] Enforcing connectivity...")
+            edges_base, n_added = ensure_connected(
+                latlonalt=latlonalt_base,
+                edges_kept=edges_base,
+                k_centroid_nn=int(args.centroid_knn),
+                method=args.connectivity_method.lower(),
+            )
+            # quick report
+            G_final = _graph_from_edges(len(vertices_base), edges_base)
+            k_final = nx.number_connected_components(G_final)
+            print(f"      Components after: {k_final} (added {n_added} bridging edge(s))")
+        else:
+            if grid_enabled:
+                print("[7/7] Skipped connectivity enforcement in grid mode (grid is already connected by construction).")
+            else:
+                print("[7/7] Skipped connectivity enforcement by user request.")
 
-    # Write edges.csv (using IDENTIFIER names instead of numeric indices)
-    write_edges_csv(edges_kept, exp_dir, vertices["IDENTIFIER"].astype(str).tolist())
+        # --- Multi-flight-level expansion + edge lifting ---
 
-    # Persist a run_config.json for traceability (paths as strings)
-    try:
-        import json
-        payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
-        payload["resolved_out_dir"] = str(exp_dir.resolve())
-        payload["stats"] = {
-            "num_vertices_base": int(N_base),
-            "num_vertices_layered": int(len(vertices)),
-            "num_edges_written": int(len(edges_kept)),
-            "enforce_connected": bool(do_connect),
-            "altitude_levels_raw": [float(x) for x in alt_values_raw],
-            "altitude_levels_m": [float(x) for x in alt_values_m],
-            "num_levels": int(n_levels),
-            "altitude_ref_m": float(ref_alt_m),
-        }
-        with open(exp_dir / "run_config.json", "w") as fh:
-            json.dump(payload, fh, indent=2)
-    except Exception:
-        pass
-
-    print(f"Done. Wrote edges.csv and vertices.csv to {exp_dir.resolve()}")
+        vertices, idx_map = expand_vertices_with_flight_levels(
+            vertices_base,
+            level_values_raw=alt_values_raw,
+            level_values_m=alt_values_m,
+            altitude_unit=args.altitude_unit,
+        )
+        edges_kept = lift_edges_from_base(
+            vertices_base=vertices_base,
+            vertices_layered=vertices,
+            idx_map=idx_map,
+            edges_base=edges_base,
+            n_levels=n_levels,
+        )
  
+        # 4) Save FINAL vertices.csv (layered)
+        write_vertices_csv(vertices, exp_dir)
+        print(f"[4/6] Wrote vertices.csv -> {exp_dir/'vertices.csv'}")
+ 
+
+
+        # Write edges.csv (using IDENTIFIER names instead of numeric indices)
+        write_edges_csv(edges_kept, exp_dir, vertices["IDENTIFIER"].astype(str).tolist())
+
+        # Persist a run_config.json for traceability (paths as strings)
+        try:
+            import json
+            payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
+            payload["resolved_out_dir"] = str(exp_dir.resolve())
+            payload["stats"] = {
+                "num_vertices_base": int(N_base),
+                "num_vertices_layered": int(len(vertices)),
+                "num_edges_written": int(len(edges_kept)),
+                "enforce_connected": bool(do_connect),
+                "altitude_levels_raw": [float(x) for x in alt_values_raw],
+                "altitude_levels_m": [float(x) for x in alt_values_m],
+                "num_levels": int(n_levels),
+                "altitude_ref_m": float(ref_alt_m),
+            }
+            with open(exp_dir / "run_config.json", "w") as fh:
+                json.dump(payload, fh, indent=2)
+        except Exception:
+            pass
+
+        print(f"Done. Wrote edges.csv and vertices.csv to {exp_dir.resolve()}")
+
 
 if __name__ == "__main__":
-    main()
+    NavigationGraphBuilder().start(sys.argv[1:])

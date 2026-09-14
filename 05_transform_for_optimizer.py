@@ -42,9 +42,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, Tuple, List
+from typing import Dict, Sequence, Tuple, List
 
 import stage_interfaces
+from stage_interfaces import TransformStage
 import pandas as pd
 import numpy as np
 import sys
@@ -441,7 +442,7 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
 
 # --------------- CLI ---------------
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Transform pipeline outputs to optimizer format.")
     p.add_argument("--in-exp-dir", type=Path, required=True,
                    help="Experiment folder from pipeline (contains navgraph/ and DATA_* subfolders).")
@@ -459,52 +460,72 @@ def parse_args() -> argparse.Namespace:
                         "('default'), 'module:ClassName' or 'path/to/file.py:ClassName'. The "
                         "class must subclass stage_interfaces.TransformStage. "
                         "'transform=SPEC' is accepted too, to match run_pipeline.py.")
-    return p.parse_args()
+    return p.parse_args(argv)
 
-def main():
-    a = parse_args()
+class OptimizerTransform(TransformStage):
+    r"""The shipped stage 05: turn one experiment into solver-ready instances.
 
-    spec = a.stage_impl
-    if spec and spec.startswith("transform="):
-        spec = spec.split("=", 1)[1]
-    if spec and spec != "default":
-        try:
-            impl = stage_interfaces.load("transform", spec)
-        except stage_interfaces.StageImplError as exc:
-            print(f"[FATAL] --stage-impl: {exc}", file=sys.stderr)
-            raise SystemExit(2)
-        print(f"[stage-impl] transform: {spec} -> {type(impl).__name__}")
-        # Hand the implementation the canonical argv for this stage, exactly as
-        # run_pipeline hands one to stages 00-04: values resolved, defaults filled in.
-        argv = ["--in-exp-dir", str(a.in_exp_dir),
-                "--out-root", str(a.out_root),
-                "--select", str(a.select)]
-        if a.experiment_name:
-            argv += ["--experiment-name", str(a.experiment_name)]
-        impl.start(argv)
-        return
+    This is the reference implementation of
+    :class:`stage_interfaces.TransformStage`; that class's docstring lists the
+    files written into each instance directory and the invariant that every
+    identifier is re-indexed to a contiguous integer from 0.
 
-    exp_in = a.in_exp_dir
-    if not exp_in.exists():
-        raise FileNotFoundError(f"Experiment folder not found: {exp_in}")
+    Stage 05 is its own entry point, so unlike stages 00-04 it carries the
+    ``--stage-impl`` selector itself; the dispatch below is that entry-point
+    plumbing, and everything after it is the transform proper.
+    ``stage_interfaces.DefaultTransform`` spawns this script out of process, so
+    an alternative transform can delegate to the shipped one by instantiating
+    ``DefaultTransform``. To select this class by name instead::
 
-    experiment_name = a.experiment_name or exp_in.name
-    out_root = a.out_root
+        python 05_transform_for_optimizer.py --in-exp-dir <dir> \
+            --stage-impl 05_transform_for_optimizer.py:OptimizerTransform
+    """
 
-    # Find DATA_* subfolders
-    data_dirs = sorted([p for p in exp_in.glob(a.select) if p.is_dir()])
-    if not data_dirs:
-        raise RuntimeError(f"No data subfolders matching '{a.select}' in {exp_in}")
+    def start(self, argv: Sequence[str]) -> None:
+        a = parse_args(list(argv))
 
-    print(f"[i] Experiment: {experiment_name}")
-    print(f"[i] Inputs: {len(data_dirs)} data sample(s)")
-    for d in data_dirs:
-        print(f"    - {d.name}")
+        spec = a.stage_impl
+        if spec and spec.startswith("transform="):
+            spec = spec.split("=", 1)[1]
+        if spec and spec != "default":
+            try:
+                impl = stage_interfaces.load("transform", spec)
+            except stage_interfaces.StageImplError as exc:
+                print(f"[FATAL] --stage-impl: {exc}", file=sys.stderr)
+                raise SystemExit(2)
+            print(f"[stage-impl] transform: {spec} -> {type(impl).__name__}")
+            # Hand the implementation the canonical argv for this stage, exactly as
+            # run_pipeline hands one to stages 00-04: values resolved, defaults filled in.
+            argv = ["--in-exp-dir", str(a.in_exp_dir),
+                    "--out-root", str(a.out_root),
+                    "--select", str(a.select)]
+            if a.experiment_name:
+                argv += ["--experiment-name", str(a.experiment_name)]
+            impl.start(argv)
+            return
 
-    for d in data_dirs:
-        transform_one_sample(exp_in=exp_in, data_dir=d, out_root=out_root, experiment_name=experiment_name)
+        exp_in = a.in_exp_dir
+        if not exp_in.exists():
+            raise FileNotFoundError(f"Experiment folder not found: {exp_in}")
 
-    print(f"\n[✓] All done. Output root: { (out_root / experiment_name).resolve() }")
+        experiment_name = a.experiment_name or exp_in.name
+        out_root = a.out_root
+
+        # Find DATA_* subfolders
+        data_dirs = sorted([p for p in exp_in.glob(a.select) if p.is_dir()])
+        if not data_dirs:
+            raise RuntimeError(f"No data subfolders matching '{a.select}' in {exp_in}")
+
+        print(f"[i] Experiment: {experiment_name}")
+        print(f"[i] Inputs: {len(data_dirs)} data sample(s)")
+        for d in data_dirs:
+            print(f"    - {d.name}")
+
+        for d in data_dirs:
+            transform_one_sample(exp_in=exp_in, data_dir=d, out_root=out_root, experiment_name=experiment_name)
+
+        print(f"\n[✓] All done. Output root: { (out_root / experiment_name).resolve() }")
+
 
 if __name__ == "__main__":
-    main()
+    OptimizerTransform().start(sys.argv[1:])

@@ -50,10 +50,12 @@ from datetime import datetime, timezone
 import json
 import re
 
-from typing import Dict, Tuple
+from typing import Dict, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+import sys
+from stage_interfaces import DemandModelStage
 
 
 def parse_airport_include_spec(spec: str | None) -> set[str] | None:
@@ -98,7 +100,7 @@ def _parse_airport_types(spec):
 # -------------------------
 # CLI
 # -------------------------
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     def str2bool(v: str) -> bool:
         if isinstance(v, bool):
             return v
@@ -113,7 +115,7 @@ def parse_args() -> argparse.Namespace:
     # ---- first pass to get --config (no help to avoid conflicts) ----
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--config", type=Path, default=None)
-    pre_args, _ = pre.parse_known_args()
+    pre_args, _ = pre.parse_known_args(argv)
 
     # ---- load config if provided ----
     cfg: dict = {}
@@ -186,7 +188,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--flat-out", action="store_true",
                     help="Write files directly into --out-dir (disable auto-named subfolder).")
 
-    args = p.parse_args()
+    args = p.parse_args(argv)
     args.smoothing = str2bool(args.smoothing)
     args.icao_only = str2bool(args.icao_only)
     args.verify_ourairports = str2bool(args.verify_ourairports)
@@ -656,150 +658,170 @@ def save_artifacts(
 # -------------------------
 # Main
 # -------------------------
-def main():
-    args = parse_args()
-    if not args.csv_path.exists():
-        raise FileNotFoundError(f"CSV not found: {args.csv_path}")
+class DemandModelBuilder(DemandModelStage):
+    r"""The shipped stage 00: fit the demand model from a real flight list.
 
-    # Resolve ourairports verification
-    allowed_icao: set[str] | None = None
-    airport_include = parse_airport_include_spec(args.airport_include)
-    if args.verify_ourairports:
-        default_oa_path = Path("./ourairports/airports.csv")
-        is_default_path = (args.ourairports_path.resolve() == default_oa_path.resolve())
-        if args.ourairports_path.exists():
-            try:
+    This is the reference implementation of
+    :class:`stage_interfaces.DemandModelStage` — the contract it satisfies (the
+    five CSVs it must write, their columns, and the invariants that bind them)
+    is in that class's docstring. Copy this file as the starting point for your
+    own demand model, or subclass ``DemandModelStage`` directly and write
+    ``start`` from scratch.
 
-                oa_df = load_ourairports_df(args.ourairports_path,
-                                            airport_types=_parse_airport_types(args.airport_types))
-                # Optional geographic region restriction from config
-                regions_cfg = args.considered_geographic_regions or []
-                if regions_cfg:
-                    region_icao = filter_icao_by_regions(oa_df, regions_cfg)
-                    if not region_icao:
-                        print("[WARNING] - Geographic region filter matched 0 airports; ignoring region restriction.")
-                        allowed_icao = set(oa_df["icao"])
+    The pipeline does not call this class in process: ``run_pipeline.py``
+    resolves stage ``model`` to ``stage_interfaces.DefaultDemandModel``, which
+    spawns this script as ``python 00_model_generation_script_refactored.py``.
+    Both routes run the code below. To select this class explicitly::
+
+        python run_pipeline.py --config <cfg> --stage-impl \
+            model=00_model_generation_script_refactored.py:DemandModelBuilder
+    """
+
+    def start(self, argv: Sequence[str]) -> None:
+        args = parse_args(list(argv))
+        if not args.csv_path.exists():
+            raise FileNotFoundError(f"CSV not found: {args.csv_path}")
+
+        # Resolve ourairports verification
+        allowed_icao: set[str] | None = None
+        airport_include = parse_airport_include_spec(args.airport_include)
+        if args.verify_ourairports:
+            default_oa_path = Path("./ourairports/airports.csv")
+            is_default_path = (args.ourairports_path.resolve() == default_oa_path.resolve())
+            if args.ourairports_path.exists():
+                try:
+
+                    oa_df = load_ourairports_df(args.ourairports_path,
+                                                airport_types=_parse_airport_types(args.airport_types))
+                    # Optional geographic region restriction from config
+                    regions_cfg = args.considered_geographic_regions or []
+                    if regions_cfg:
+                        region_icao = filter_icao_by_regions(oa_df, regions_cfg)
+                        if not region_icao:
+                            print("[WARNING] - Geographic region filter matched 0 airports; ignoring region restriction.")
+                            allowed_icao = set(oa_df["icao"])
+                        else:
+                            allowed_icao = region_icao
                     else:
-                        allowed_icao = region_icao
-                else:
-                    allowed_icao = set(oa_df["icao"])
+                        allowed_icao = set(oa_df["icao"])
 
-            except Exception as e:
-                raise RuntimeError(f"Failed to load ourairports file at {args.ourairports_path}: {e}") from e
-        else:
-            if is_default_path:
-                print(f"[WARNING] - Could not verify airports from ourairports "
-                      f"(assumed to be located in {args.ourairports_path}). "
-                      f"Proceeding without external airport verification.")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to load ourairports file at {args.ourairports_path}: {e}") from e
             else:
-                raise FileNotFoundError(f"OurAirports file not found: {args.ourairports_path}")
+                if is_default_path:
+                    print(f"[WARNING] - Could not verify airports from ourairports "
+                          f"(assumed to be located in {args.ourairports_path}). "
+                          f"Proceeding without external airport verification.")
+                else:
+                    raise FileNotFoundError(f"OurAirports file not found: {args.ourairports_path}")
 
-    # Apply airport include-list (if provided). This is an additional hard filter:
-    # the model will only include flights whose origin AND destination are in the include-set.
-    if airport_include:
-        if allowed_icao is None:
-            allowed_icao = set(airport_include)
-            print(f"[INFO] - Airport include-list enabled without OurAirports verification: {len(allowed_icao)} ICAO(s).")
-        else:
-            before = set(allowed_icao)
-            allowed_icao = before.intersection(airport_include)
-            missing = set(airport_include) - before
-            if missing:
-                print(f"[INFO] - Airport include-list: {len(missing)} ICAO(s) not present in verified airport set "
-                      f"(or excluded by region filter): {sorted(missing)[:20]}{'...' if len(missing) > 20 else ''}")
-            print(f"[INFO] - Airport include-list enabled: keeping {len(allowed_icao)} ICAO(s) after verification/region filtering.")
-            if not allowed_icao:
-                print("[WARNING] - Airport include-list resulted in 0 allowed airports; output artifacts will be empty.")
+        # Apply airport include-list (if provided). This is an additional hard filter:
+        # the model will only include flights whose origin AND destination are in the include-set.
+        if airport_include:
+            if allowed_icao is None:
+                allowed_icao = set(airport_include)
+                print(f"[INFO] - Airport include-list enabled without OurAirports verification: {len(allowed_icao)} ICAO(s).")
+            else:
+                before = set(allowed_icao)
+                allowed_icao = before.intersection(airport_include)
+                missing = set(airport_include) - before
+                if missing:
+                    print(f"[INFO] - Airport include-list: {len(missing)} ICAO(s) not present in verified airport set "
+                          f"(or excluded by region filter): {sorted(missing)[:20]}{'...' if len(missing) > 20 else ''}")
+                print(f"[INFO] - Airport include-list enabled: keeping {len(allowed_icao)} ICAO(s) after verification/region filtering.")
+                if not allowed_icao:
+                    print("[WARNING] - Airport include-list resulted in 0 allowed airports; output artifacts will be empty.")
 
 
-    # Validate date selection
-    if args.date_start and args.date_end:
-        target_day = None
-    elif args.target_day:
-        target_day = args.target_day
-    else:
-        # default to legacy single-day if nothing provided
-        target_day = "2019-06-15"
-
-    df = load_filtered(
-        args.csv_path,
-        target_day=target_day,
-        date_start=args.date_start,
-        date_end=args.date_end,
-        chunksize=args.chunksize,
-        day_parity=args.day_parity,
-    )
-
-    airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq, dur_tertiles = build_models(
-        df,
-        bin_min=args.bin_min,
-        smooth_win=args.smooth_win,
-        epsilon=args.epsilon,
-        alpha=args.alpha,
-        global_backoff=args.global_backoff,
-        min_tat=args.min_tat,
-        max_tat=args.max_tat,
-        min_dur=args.min_dur,
-        max_dur=args.max_dur,
-        smoothing=args.smoothing,
-        icao_only=args.icao_only,
-        min_samples_per_od=args.min_samples_per_od,
-        allowed_icao=allowed_icao,
-        date_start=args.date_start,
-        date_end=args.date_end,
-        seed=args.seed,
-        timezone=float(args.timezone),
-        day_parity=args.day_parity,
-    )
-
-    # --- build auto-named experiment directory ---
-    if args.flat_out:
-        exp_dir = args.out_dir
-    else:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
-
+        # Validate date selection
         if args.date_start and args.date_end:
-            date_tag = f"range-{args.date_start}_to_{args.date_end}"
+            target_day = None
+        elif args.target_day:
+            target_day = args.target_day
         else:
-            date_tag = f"day-{target_day}"
+            # default to legacy single-day if nothing provided
+            target_day = "2019-06-15"
 
-        tag = (
-            f"{date_tag}"
-            f"_bin{args.bin_min}"
-            f"_smooth{'T' if args.smoothing else 'F'}w{args.smooth_win}"
-            f"_eps{args.epsilon:g}"
-            f"_a{args.alpha:g}"
-            f"_back{args.global_backoff:g}"
-            f"_tat{int(args.min_tat)}-{int(args.max_tat)}"
-            f"_dur{int(args.min_dur)}-{int(args.max_dur)}"
-            f"_icao{'T' if args.icao_only else 'F'}"
-            f"_apinc{len(airport_include) if airport_include else 0}"
-            f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
+        df = load_filtered(
+            args.csv_path,
+            target_day=target_day,
+            date_start=args.date_start,
+            date_end=args.date_end,
+            chunksize=args.chunksize,
+            day_parity=args.day_parity,
         )
 
-        exp_dir = args.out_dir / f"{ts}__{tag}"
-    exp_dir.mkdir(parents=True, exist_ok=True)
-    # persist full CLI args for traceability
-    with open(exp_dir / "run_config.json", "w") as fh:
-        # dump a clean, JSON-serializable view (Paths as strings)
-        payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
-        # Include regions config explicitly (already in args but ensure JSON-friendly)
-        if "considered_geographic_regions" in payload and payload["considered_geographic_regions"] is not None:
-            payload["considered_geographic_regions"] = payload["considered_geographic_regions"]
-        json.dump(payload, fh, indent=2)
+        airport_bins, od_time_model, tat_dist, od_dur_dist, global_dest_freq, dur_tertiles = build_models(
+            df,
+            bin_min=args.bin_min,
+            smooth_win=args.smooth_win,
+            epsilon=args.epsilon,
+            alpha=args.alpha,
+            global_backoff=args.global_backoff,
+            min_tat=args.min_tat,
+            max_tat=args.max_tat,
+            min_dur=args.min_dur,
+            max_dur=args.max_dur,
+            smoothing=args.smoothing,
+            icao_only=args.icao_only,
+            min_samples_per_od=args.min_samples_per_od,
+            allowed_icao=allowed_icao,
+            date_start=args.date_start,
+            date_end=args.date_end,
+            seed=args.seed,
+            timezone=float(args.timezone),
+            day_parity=args.day_parity,
+        )
 
-    save_artifacts(
-        out_dir=exp_dir,
-        bin_min=args.bin_min,
-        airport_bins=airport_bins,
-        od_time_model=od_time_model,
-        tat_dist=tat_dist,
-        od_dur_dist=od_dur_dist,
-        global_dest_freq=global_dest_freq,
-        dur_tertiles=dur_tertiles,
-    )
+        # --- build auto-named experiment directory ---
+        if args.flat_out:
+            exp_dir = args.out_dir
+        else:
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
 
-    print(f"Done. Artifacts written to: {exp_dir.resolve()}")
+            if args.date_start and args.date_end:
+                date_tag = f"range-{args.date_start}_to_{args.date_end}"
+            else:
+                date_tag = f"day-{target_day}"
+
+            tag = (
+                f"{date_tag}"
+                f"_bin{args.bin_min}"
+                f"_smooth{'T' if args.smoothing else 'F'}w{args.smooth_win}"
+                f"_eps{args.epsilon:g}"
+                f"_a{args.alpha:g}"
+                f"_back{args.global_backoff:g}"
+                f"_tat{int(args.min_tat)}-{int(args.max_tat)}"
+                f"_dur{int(args.min_dur)}-{int(args.max_dur)}"
+                f"_icao{'T' if args.icao_only else 'F'}"
+                f"_apinc{len(airport_include) if airport_include else 0}"
+                f"{'_seed'+str(args.seed) if args.seed is not None else ''}"
+            )
+
+            exp_dir = args.out_dir / f"{ts}__{tag}"
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        # persist full CLI args for traceability
+        with open(exp_dir / "run_config.json", "w") as fh:
+            # dump a clean, JSON-serializable view (Paths as strings)
+            payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
+            # Include regions config explicitly (already in args but ensure JSON-friendly)
+            if "considered_geographic_regions" in payload and payload["considered_geographic_regions"] is not None:
+                payload["considered_geographic_regions"] = payload["considered_geographic_regions"]
+            json.dump(payload, fh, indent=2)
+
+        save_artifacts(
+            out_dir=exp_dir,
+            bin_min=args.bin_min,
+            airport_bins=airport_bins,
+            od_time_model=od_time_model,
+            tat_dist=tat_dist,
+            od_dur_dist=od_dur_dist,
+            global_dest_freq=global_dest_freq,
+            dur_tertiles=dur_tertiles,
+        )
+
+        print(f"Done. Artifacts written to: {exp_dir.resolve()}")
+
 
 if __name__ == "__main__":
-    main()
+    DemandModelBuilder().start(sys.argv[1:])
