@@ -262,15 +262,32 @@ class SectorCapacityStage(GeneratorStage):
     * ``Capacity`` >= 1. A capacity of 0 is unsatisfiable by construction, since
       a flight occupies its departure sector in its first timestep (check
       ``P4``).
-    * Every vertex in ``vertices.csv`` appears exactly once as ``Navaid_ID``,
-      and every ``Sector_ID`` used there is declared in ``sectors.csv``
-      (checks ``P5``/``D6``).
+    * Every vertex in ``vertices.csv`` appears exactly once as ``Navaid_ID``.
+    * The two files need **not** share a ``Sector_ID`` namespace here. Checks
+      ``P5``/``D6`` — every sector referenced is a sector declared — bind the
+      *parsed* instance, not this stage's output: stage 05 re-keys both columns
+      through the vertex table before the checker ever sees them. The shipped
+      stage 03 writes ``SECTOR_000000`` / ``SECTOR_AIRPORT_RCKH`` into
+      ``navaid_sector_assignment.csv`` while ``sectors.csv`` holds
+      ``GRID_EAST-ASIA_Y00X00_FL100`` — the two sets are disjoint, with no
+      overlap at all, and the instance that comes out is still valid.
     * **``sectors.csv`` is keyed by navaid** despite the column name (README
       convention ②): the shipped stage writes one row per graph vertex, and
       ``navaid_sector_assignment.csv`` is what maps vertices onto clusters.
       An implementation that writes one row per cluster instead is legal — the
       checker only requires that the two files agree — but downstream consumers
       that assume convention ② will read it differently.
+
+      .. TODO:: **Unresolved; for the project owner to decide, not the reader.**
+         The paragraph above says a per-cluster ``sectors.csv`` "is legal", and
+         ``example_stage_impls.py:LatitudeBandSectors`` — an example written
+         against this very interface — says in its own docstring that such a
+         file "would not survive this pipeline's stage 05". Both cannot stand:
+         stage 05 maps the ``Sector_ID`` column through the vertex table, and a
+         cluster name has no vertex to map to. The choice is between
+         (a) teaching ``05_transform_for_optimizer.py`` to accept a per-cluster
+         ``sectors.csv``, and (b) dropping the promise here and requiring one
+         row per vertex. Left as written until that is settled.
     """
 
     #: the shipped example to read and copy

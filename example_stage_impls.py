@@ -216,8 +216,10 @@ class LatitudeBandSectors(SectorCapacityStage):
       (checks ``P5``/``D6``);
     * follows convention ② — ``sectors.csv`` is keyed by **navaid**, one row per
       graph vertex, because stage 05 maps its ``Sector_ID`` column through the
-      vertex table. The docstring says a per-cluster ``sectors.csv`` is legal
-      too, but it would not survive this pipeline's stage 05.
+      vertex table. The interface docstring says a per-cluster ``sectors.csv``
+      is legal too, but it would not survive this pipeline's stage 05; that
+      contradiction is flagged with a TODO on ``SectorCapacityStage`` and is the
+      project owner's to resolve.
 
     Airports are identified from the ``IS_AIRPORT`` column that
     ``NavigationGraphStage`` promises in ``vertices.csv``, rather than by
