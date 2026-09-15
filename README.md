@@ -357,20 +357,42 @@ than defects:
 
 ---
 
-## Time granularity: pick it with the graph, not the region
+## Time granularity: pick it from the region's graph
 
-Each edge traversal costs at least one whole timestep. So when a timestep is longer than the time
-an aircraft needs to cross one edge, flight duration becomes `hops × timestep` rather than
-distance ÷ speed. Graphs with many short edges therefore need a fine granularity:
+An aircraft needs at least one whole timestep to cross an edge. When a timestep is longer than a
+typical edge crossing, each hop costs a full timestep and flight duration is set by the hop count;
+once it is shorter, duration follows distance ÷ speed. The deciding ratio is
 
-| graph | hops | faithful from |
-|---|---|---|
-| coarse grids (e.g. 7×7, ~5.6 hops) | few | TG ≥ 4 |
-| Gabriel graphs (e.g. DACH, ~24 hops) | many | TG ≥ 15, ideally 60 |
+    ρ = timestep length ÷ median edge traversal time   (at 450 kt)
 
-Measured on DACH: `hops × timestep` predicts 1440 / 360 / 96 minutes at TG = 1 / 4 / 15, observed
-1427 / 358 / 98. At TG=60 the effect stops binding and duration follows the real geometry. This
-is a property of the topology, not of the region — see `FUTURE_WORK.md` §D1.
+and durations are faithful once ρ < 1. Because ρ depends on edge length, the right granularity is
+a property of each region's graph:
+
+| region | graph | median edge | ρ at TG=1 | TG=4 | TG=15 | TG=60 | faithful from |
+|---|---|---|---|---|---|---|---|
+| USA-EAST-COAST-20x10 | grid | 314.5 km | 2.65 | 0.66 | 0.18 | 0.04 | TG=4 |
+| CENTRAL-EUROPE-7x7 | grid | 183.0 km | 4.55 | 1.14 | 0.30 | 0.08 | TG=15 |
+| MAJOR-EUROPE-40x20 | grid | 144.4 km | 5.77 | 1.44 | 0.38 | 0.10 | TG=15 |
+| EAST-ASIA-40x40 | grid | 103.9 km | 8.02 | 2.00 | 0.53 | 0.13 | TG=15 |
+| EUROPE | Gabriel | 24.2 km | 34.49 | 8.62 | 2.30 | 0.57 | TG=60 |
+| DACH | Gabriel | 18.3 km | 45.53 | 11.38 | 3.04 | 0.76 | TG=60 |
+| USA-MAINLAND | Gabriel | 17.5 km | 47.51 | 11.88 | 3.17 | 0.79 | TG=60 |
+| CENTRAL-EUROPE | Gabriel | 10.6 km | 78.76 | 19.69 | 5.25 | 1.31 | none shipped |
+
+`CENTRAL-EUROPE` stays above ρ = 1 even at TG=60, so no shipped granularity gives it faithful
+durations.
+
+Coarse granularity also changes which flights exist. Every flight must fit the 24-hour window, and
+at TG=1 the day is only 24 timesteps, so long routes are replaced by nearer destinations. Measured
+on DACH at |F|=1000 (3 seeds, 3,000 flights), with the real reference taken at the same timestep:
+
+| TG | 1 | 4 | 15 | 60 |
+|---|---|---|---|---|
+| mean hops | 10.7 | 22.8 | 23.8 | 26.6 |
+| mean duration, generated | 642.8 min | 342.6 min | 97.8 min | 48.9 min |
+| mean duration, real | 77.9 min | 61.7 min | 56.3 min | 54.8 min |
+
+See `FUTURE_WORK.md` §D1.
 
 ---
 
