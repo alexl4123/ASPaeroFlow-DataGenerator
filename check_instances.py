@@ -50,6 +50,18 @@ What is checked (a violation fails the run)
             its previous leg landed at. An airframe cannot teleport between legs
             any more than a flight can teleport between waypoints
   P9        transform_manifest.json agrees with the directory name
+  P10       navaid_sector_schedule.csv, the sector allocation over time, is well
+            formed -- checked only when the file is present, since instances
+            generated before it existed do not carry one and stay valid:
+    P10a      every From_Time is a whole timestep in [0, TG*24)
+    P10b      no two rows share (Navaid_ID, From_Time)
+    P10c      every navpoint has exactly one sector at every timestep of the
+              window: the rows are change-points, so with P10b this holds
+              exactly when every navpoint has a row at From_Time 0
+    P10d      every sector the schedule uses is declared in sectors.csv
+    P10e      the schedule at t=0 maps every navpoint to the same sector as
+              navaid_sector_assignment.csv -- solvers read one file or the
+              other, and must see one instance
 
 What is reported but never fails
 --------------------------------
@@ -62,6 +74,8 @@ What is reported but never fails
             so a zero here is a hint the instance is trivial, not an error. It is
             also exactly what a PCAP100 overlay is supposed to show: nominal
             capacity is by definition the smallest capacity with no overload
+  P10-present  how many instances carry navaid_sector_schedule.csv. Where it is
+            absent the static allocation holds for the whole window
   D8-legs   mean legs per airframe. It falls as TG coarsens, because one route
             eats most of a 24 h window and the rotation has nowhere to continue;
             that is a property of the instance family, not a defect
@@ -95,6 +109,12 @@ REQUIRED_FILES = (
     "navaid_sector_assignment.csv",
     "sectors.csv",
 )
+
+#: The sector allocation with an explicit time axis. Optional, and so not in
+#: REQUIRED_FILES: every instance published before stage 03 wrote it lacks it and is
+#: still valid, with its static allocation holding for the whole window.
+SCHEDULE_FILE = "navaid_sector_schedule.csv"
+SCHEDULE_COLUMNS = ("Navaid_ID", "Sector_ID", "From_Time")
 
 DATASET_RE = re.compile(r"^(\d+)_SEED(\w+)$")
 
@@ -157,6 +177,63 @@ def resolve_tg(ds: Path, override: int | None) -> tuple[int, str]:
 # the checks
 # --------------------------------------------------------------------------
 
+def check_schedule(ctx: str, sch: pd.DataFrame, sec: pd.DataFrame, sc: pd.DataFrame,
+                   verts: set, window: int, rep: Report) -> None:
+    """P10: the sector schedule is a well-formed allocation over [0, window).
+
+    The rows are change-points -- "from ``From_Time`` on, until this navpoint's next
+    row". So a navpoint has exactly one sector at EVERY timestep of the window when it
+    has a row at 0 (nothing before its first change-point is left uncovered) and no two
+    rows at one ``From_Time`` (nothing is covered twice). P10b and P10c are those two
+    halves; together they are the per-timestep statement without expanding the dense
+    navpoint x timestep matrix, which for USA-MAINLAND at TG=60 is 28M cells.
+    """
+    missing_cols = [c for c in SCHEDULE_COLUMNS if c not in sch.columns]
+    if not rep.check(ctx, "P10 schedule has columns Navaid_ID,Sector_ID,From_Time",
+                     not missing_cols, f"missing {','.join(missing_cols)}"):
+        return
+
+    t = pd.to_numeric(sch["From_Time"], errors="coerce")
+    bad_t = t.isna() | (t != t.round()) | (t < 0) | (t >= window)
+    rep.check(ctx, "P10a schedule From_Time is a whole timestep in [0, TG*24)",
+              not bool(bad_t.any()),
+              f"{int(bad_t.sum())} rows outside [0, {window}), "
+              f"e.g. {sch.loc[bad_t, 'From_Time'].head(3).tolist()}")
+
+    dup = sch.duplicated(subset=["Navaid_ID", "From_Time"], keep=False)
+    rep.check(ctx, "P10b schedule has no duplicate (Navaid_ID, From_Time)",
+              not bool(dup.any()),
+              f"{int(dup.sum())} rows share a (Navaid_ID, From_Time), "
+              f"e.g. {sch.loc[dup, ['Navaid_ID', 'From_Time']].head(3).values.tolist()}")
+
+    # Every navpoint the instance knows -- the graph's and the static file's -- plus any
+    # the schedule names, must be allocated from t=0.
+    navpoints = set(verts) | set(sec["Navaid_ID"]) | set(sch["Navaid_ID"])
+    at_zero = set(sch.loc[t == 0, "Navaid_ID"])
+    uncovered = navpoints - at_zero
+    rep.check(ctx, "P10c schedule gives every navpoint exactly one sector at every timestep",
+              not uncovered and not bool(dup.any()),
+              f"{len(uncovered)} navpoints have no sector from t=0"
+              + (f" (e.g. {sorted(uncovered)[:3]})" if uncovered else "")
+              + (f"; {int(dup.sum())} rows cover a timestep twice" if dup.any() else ""))
+
+    undeclared = set(sch["Sector_ID"]) - set(sc["Sector_ID"])
+    rep.check(ctx, "P10d every sector the schedule uses is declared",
+              not undeclared, f"{len(undeclared)} undeclared")
+
+    # At t=0 the schedule IS the static allocation. Compare as mappings, so row order
+    # does not matter but every navpoint and every sector does.
+    static = dict(zip(sec["Navaid_ID"], sec["Sector_ID"]))
+    first = sch[t == 0].drop_duplicates(subset=["Navaid_ID"])
+    initial = dict(zip(first["Navaid_ID"], first["Sector_ID"]))
+    differ = {n for n in static.keys() | initial.keys() if static.get(n) != initial.get(n)}
+    rep.check(ctx, "P10e schedule at t=0 agrees with navaid_sector_assignment.csv",
+              not differ,
+              f"{len(differ)} navpoints differ, e.g. "
+              + ", ".join(f"{n}: {static.get(n)} vs {initial.get(n)}"
+                          for n in sorted(differ, key=str)[:3]))
+
+
 def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int:
     """Run every check on one instance directory. Returns the violation count."""
     ctx = ctx or f"{ds.parent.name}/{ds.name}"
@@ -214,6 +291,12 @@ def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int
     undeclared = set(sec["Sector_ID"]) - set(sc["Sector_ID"])
     rep.check(ctx, "P5/D6/F6 every sector used is declared", not undeclared,
               f"{len(undeclared)} undeclared")
+
+    # --- the sector allocation over time (optional file) -----------------
+    has_schedule = (ds / SCHEDULE_FILE).exists()
+    rep.note("schedule", ctx, 1.0 if has_schedule else 0.0)
+    if has_schedule:
+        check_schedule(ctx, pd.read_csv(ds / SCHEDULE_FILE), sec, sc, verts, window, rep)
 
     # --- trajectories ----------------------------------------------------
     bad_t = int(((dt <= 0) & same).sum())
@@ -410,6 +493,7 @@ def main() -> int:
     clamp = [v for k, _c, v in rep.notes if k == "clamp"]
     imbal = [v for k, _c, v in rep.notes if k == "imbalance"]
     legs = [v for k, _c, v in rep.notes if k == "legs"]
+    sched = [v for k, _c, v in rep.notes if k == "schedule"]
     print("--- reported, not failed -------------------------------------------")
     if clamp:
         print(f"  P3-clamp  flights ending on the window edge: mean {sum(clamp)/len(clamp):.1%} "
@@ -422,6 +506,10 @@ def main() -> int:
                   "these are")
             print("            PCAP100 overlays, where zero overload is the definition of "
                   "nominal capacity")
+    if sched:
+        print(f"  P10-present  {SCHEDULE_FILE}: in {int(sum(sched))} of {len(sched)} "
+              f"instance(s)" + ("" if all(sched) else
+                               "; where absent, the static allocation holds all day"))
     if legs:
         print(f"  D8-legs   legs per airframe:                   mean {sum(legs)/len(legs):.3f} "
               f"[{min(legs):.3f}-{max(legs):.3f}]")
