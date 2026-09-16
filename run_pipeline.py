@@ -438,8 +438,14 @@ def main():
     # 3) SECTOR CAPACITIES (03)
     print(f"[3/6] Sector Capacities")
 
+    # The guard names every file the stage writes, so a tree missing any one of them --
+    # including one generated before the schedule existed -- re-runs the stage instead
+    # of skipping past a partial set (atomic_io.py, atomic_group). Stage 03 is a pure
+    # function of vertices.csv, edges.csv and the OurAirports table, so a re-run
+    # rewrites the two files that were already there byte for byte.
     graph_needed = a.force_rebuild_graph or not all([
         file_exists(nav_dir / "navaid_sector_assignment.csv"),
+        file_exists(nav_dir / "navaid_sector_schedule.csv"),
         file_exists(nav_dir / "sectors.csv"),
     ])
     if graph_needed:

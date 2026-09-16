@@ -13,6 +13,11 @@ in OurAirports airports.csv (fallback: 4-letter ICAO regex if file not found).
 Output: sectors.csv with columns:
   Sector_ID,Capacity
 where Sector_ID comes from an ID column in vertices.csv (no renumbering).
+
+Also written: navaid_sector_assignment.csv (Navaid_ID,Sector_ID) and, carrying the same
+allocation with an explicit time axis, navaid_sector_schedule.csv
+(Navaid_ID,Sector_ID,From_Time).  See SCHEDULE_FILENAME below for what the time column
+means and why both files exist.
 """
 
 from __future__ import annotations
@@ -27,6 +32,29 @@ import pandas as pd
 import networkx as nx
 from stage_interfaces import SectorCapacityStage
 from atomic_io import atomic_to_csv, atomic_open
+
+#: The navpoint->sector allocation, written a second time with an explicit time axis.
+#:
+#: Columns ``Navaid_ID,Sector_ID,From_Time``, sparse CHANGE-POINTS: a row says "from this
+#: timestep onward this navpoint sits in this sector, until the next row for the same
+#: navpoint".  This stage produces a static allocation, so it emits exactly one row per
+#: navpoint at ``From_Time = 0`` -- the same information as
+#: ``navaid_sector_assignment.csv``, in a shape that can also express an allocation that
+#: changes during the day.  Nothing about the partition itself changes here.
+#:
+#: Change-points and not a dense navpoint x time matrix, because dense does not fit:
+#: USA-MAINLAND at TG=60 is 19,537 x 1,440 = 28.1M entries, roughly 225 MB per instance
+#: against the 12 KB the static file costs for DACH, across 6,720 instances
+#: (FUTURE_WORK.md, "The encoding must be change-points, not a dense matrix").
+#:
+#: ``navaid_sector_assignment.csv`` is still written, unchanged.  Every published
+#: instance, the solver mains that name it, and the cluster regeneration in flight all
+#: read that file; emitting both costs one extra column of disk and keeps them working.
+SCHEDULE_FILENAME = "navaid_sector_schedule.csv"
+
+#: The timestep every allocation starts at.  The window is [0, TG*24); a static
+#: allocation is one change-point at its left edge.
+SCHEDULE_START_TIME = 0
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate sectors.csv with per-vertex capacities.")
@@ -236,7 +264,9 @@ class SectorCapacityGenerator(SectorCapacityStage):
     :class:`stage_interfaces.SectorCapacityStage`; that class's docstring is the
     contract — ``sectors.csv`` and ``navaid_sector_assignment.csv`` written back
     into ``--path``, capacity per TIMESTEP rather than per hour, and the
-    keyed-by-navaid convention this implementation follows.
+    keyed-by-navaid convention this implementation follows.  It also writes
+    ``navaid_sector_schedule.csv``, the same allocation carrying an explicit
+    ``From_Time`` column; see :data:`SCHEDULE_FILENAME`.
 
     ``run_pipeline.py`` calls this class directly: it is stage ``sectors``'s
     ``default``, with no adapter and no subprocess in between. To name it
@@ -352,6 +382,16 @@ class SectorCapacityGenerator(SectorCapacityStage):
         nsdf_path = args.path / "navaid_sector_assignment.csv"
         atomic_to_csv(nsdf, nsdf_path, index=False)
 
+        # The same allocation with an explicit time axis (see SCHEDULE_FILENAME). This
+        # partition does not vary in time, so it is one change-point per navpoint at
+        # t=0, in nsdf's row order -- the two files carry identical information and the
+        # static one is this one's From_Time == 0 slice.
+        schedule_df = nsdf.copy()
+        schedule_df["From_Time"] = SCHEDULE_START_TIME
+        schedule_path = args.path / SCHEDULE_FILENAME
+        atomic_to_csv(schedule_df[["Navaid_ID", "Sector_ID", "From_Time"]],
+                      schedule_path, index=False)
+
         print("[4/4] Writing sectors.csv (atomic capacities)...")
 
         capacities = np.where(is_airport.to_numpy(), args.cap_airport, args.cap_enroute)
@@ -363,7 +403,9 @@ class SectorCapacityGenerator(SectorCapacityStage):
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         atomic_to_csv(out_df, out_path, index=False)
-        print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()} and {len(nsdf):,} rows to {nsdf_path.resolve()}")
+        print(f"Done. Wrote {len(out_df):,} rows to {out_path.resolve()}, "
+              f"{len(nsdf):,} rows to {nsdf_path.resolve()} and "
+              f"{len(schedule_df):,} rows to {schedule_path.resolve()}")
 
 
 if __name__ == "__main__":

@@ -252,9 +252,25 @@ class SectorCapacityStage(GeneratorStage):
     ================================  =====================================
     ``sectors.csv``                   ``Sector_ID, Capacity``
     ``navaid_sector_assignment.csv``  ``Navaid_ID, Sector_ID``
+    ``navaid_sector_schedule.csv``    ``Navaid_ID, Sector_ID, From_Time``
     ================================  =====================================
 
     Invariants:
+
+    * **The schedule is the allocation with an explicit time axis.**
+      ``navaid_sector_schedule.csv`` holds sparse CHANGE-POINTS: a row says "from
+      ``From_Time`` onward this navaid sits in this sector, until the next row for
+      the same navaid". It must cover the whole window, so every navaid carries a
+      row at ``From_Time = 0``, and no navaid may carry two rows at one
+      ``From_Time``. A stage whose allocation does not vary in time writes exactly
+      one row per navaid at 0, which is the same information as
+      ``navaid_sector_assignment.csv``; the shipped stage 03 does precisely that.
+
+      Both files are written. The static one is the schedule's ``From_Time == 0``
+      slice, and it stays because every published instance and every solver main
+      reads it by name. The schedule is sparse and not a dense navaid x time
+      matrix because dense does not fit: USA-MAINLAND at TG=60 would be
+      19,537 x 1,440 entries, roughly 225 MB per instance.
 
     * **Capacity is per TIMESTEP, not per hour** (README convention ①). At
       TG=60 a timestep is one minute. ``--cap-enroute`` applies to en-route
@@ -262,7 +278,9 @@ class SectorCapacityStage(GeneratorStage):
     * ``Capacity`` >= 1. A capacity of 0 is unsatisfiable by construction, since
       a flight occupies its departure sector in its first timestep (check
       ``P4``).
-    * Every vertex in ``vertices.csv`` appears exactly once as ``Navaid_ID``.
+    * Every vertex in ``vertices.csv`` appears exactly once as ``Navaid_ID`` in
+      ``navaid_sector_assignment.csv``, and at least once -- at ``From_Time = 0`` --
+      in ``navaid_sector_schedule.csv``.
     * The two files need **not** share a ``Sector_ID`` namespace here. Checks
       ``P5``/``D6`` — every sector referenced is a sector declared — bind the
       *parsed* instance, not this stage's output: stage 05 re-keys both columns
@@ -374,6 +392,7 @@ class TransformStage(GeneratorStage):
     ``graph_edges.csv``               ``source, target, dist_m``
     ``sectors.csv``                   ``Sector_ID, Capacity``
     ``navaid_sector_assignment.csv``  ``Navaid_ID, Sector_ID``
+    ``navaid_sector_schedule.csv``    ``Navaid_ID, Sector_ID, From_Time``
     ``transform_manifest.json``       ``n_flights``, ``seed``, ``files``
     ``mappings/vertex_map.csv``       ``IDENTIFIER, VERTEX_ID``
     ``mappings/id_maps.json``         airplane and flight id dictionaries
@@ -390,6 +409,12 @@ class TransformStage(GeneratorStage):
     * The invariants of stage 04 survive the re-indexing — window, adjacency,
       airport endpoints, aircraft separation. This is the artefact a user
       downloads, so ``check_instances.py`` runs against exactly these files.
+    * ``navaid_sector_schedule.csv`` carries stage 03's change-points through the
+      re-indexing, and its two id columns are re-keyed with the same mapping as
+      ``navaid_sector_assignment.csv``, so the schedule's ``From_Time == 0`` slice
+      equals that file. An input experiment written before the schedule existed has
+      none, and the stage derives one at ``From_Time = 0`` from the static file;
+      the instance is the same either way.
     """
 
     #: the shipped example to read and copy
