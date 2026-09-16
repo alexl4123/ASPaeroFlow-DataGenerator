@@ -12,6 +12,11 @@ rotation-continuity fix. Everything before that fix was captured on
 stage 04's output on every fixture, so the two are not comparable; see the commit that
 refreshed them.
 
+It was refreshed once more on `feature/sector-schedule-column`, when stages 03 and 05
+started writing `navaid_sector_schedule.csv`. That refresh adds the new file to every
+navgraph and every parsed instance and changes each `transform_manifest.json` by the one
+entry in its file list. No other fingerprint moved.
+
 ```bash
 tests/regression/run_fixtures.sh                   # regenerate + compare; exit 0 = unchanged
 tests/regression/run_fixtures.sh --only ea3x3      # one fixture (~25 s)

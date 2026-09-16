@@ -152,6 +152,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000010_SEED13/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000010_SEED13/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -173,9 +195,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000010_SEED13/transform_manifest.json": {
-      "bytes": 396,
+      "bytes": 430,
       "kind": "json",
-      "sha256": "2186b98bf41ad394e0143e280f0759d0b2ee19900b08215a54d07a257f9dbcb0"
+      "sha256": "568ac6217e274aabd6c903506721971f0d67cbff3d923fe29eb72661ff114a30"
     },
     "parsed/30-3-USA-7x7-V2/0000010_SEED42/airplane_flight_assignment.csv": {
       "bytes": 62,
@@ -324,6 +346,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000010_SEED42/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000010_SEED42/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -345,9 +389,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000010_SEED42/transform_manifest.json": {
-      "bytes": 396,
+      "bytes": 430,
       "kind": "json",
-      "sha256": "2fd55e82d17230a10addd8d9f4586e1d30135e395a0788d0971e667bc42df8ef"
+      "sha256": "9c10d6950496a4ef4acb52988414e80d0ceca9c911b6dd29ee34e7873075e147"
     },
     "parsed/30-3-USA-7x7-V2/0000050_SEED13/airplane_flight_assignment.csv": {
       "bytes": 280,
@@ -496,6 +540,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000050_SEED13/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000050_SEED13/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -517,9 +583,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000050_SEED13/transform_manifest.json": {
-      "bytes": 396,
+      "bytes": 430,
       "kind": "json",
-      "sha256": "0ad6c2315362b33c8a08d8e6d75e7ec091075bf96f332397bbe3ffb8b70e6f66"
+      "sha256": "973ba072b87d2afec2eb5c780dece9fe9aa54ee7eb7887f79535f239a4d0429d"
     },
     "parsed/30-3-USA-7x7-V2/0000050_SEED42/airplane_flight_assignment.csv": {
       "bytes": 287,
@@ -668,6 +734,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000050_SEED42/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000050_SEED42/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -689,9 +777,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000050_SEED42/transform_manifest.json": {
-      "bytes": 396,
+      "bytes": 430,
       "kind": "json",
-      "sha256": "19da5efe50807427c9739acca38af2af409fed4323fe46b99465ed39610114ff"
+      "sha256": "28c19e7b3070b6f53aaf1316da71e69931a8b39c2e23cd5875d5287279de7868"
     },
     "parsed/30-3-USA-7x7-V2/0000100_SEED13/airplane_flight_assignment.csv": {
       "bytes": 578,
@@ -840,6 +928,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000100_SEED13/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000100_SEED13/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -861,9 +971,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000100_SEED13/transform_manifest.json": {
-      "bytes": 398,
+      "bytes": 432,
       "kind": "json",
-      "sha256": "f42e37247f62b794cd3f944665fa22112796b27f8de9da70651de3226604119a"
+      "sha256": "a94c81b033b25225ec5bd74bd98b8334fc4f3de9c916e568559ad10a18983011"
     },
     "parsed/30-3-USA-7x7-V2/0000100_SEED42/airplane_flight_assignment.csv": {
       "bytes": 580,
@@ -1012,6 +1122,28 @@
       "sha256": "87e5143f42bbfed9167f24581d689946f2430b198494221c3cb8d2684ed7703a",
       "sha256_sorted": "ad097a42ef0463e7e07d42ca9f87486c1f69417126c200c6d4e8d7af862803f8"
     },
+    "parsed/30-3-USA-7x7-V2/0000100_SEED42/navaid_sector_schedule.csv": {
+      "bytes": 459,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "dff6a3f946d9f4e4234f14ebb73056d6445385fea81dafa84aaa6cc1fdd7267a",
+        "Sector_ID": "00907451aa7365cc965ef7c0694230d92dc7f512d3ade0cdcffb2f76af075ab2"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "77cd7a8d90010d79ec70c7a34f674d104a6f38e60d6523d4bad54cb878f90b87",
+      "sha256_sorted": "d9c6b67533c67ae4f5be580e4cbf0c52adc2113411ac217790041579adc9f59b"
+    },
     "parsed/30-3-USA-7x7-V2/0000100_SEED42/sectors.csv": {
       "bytes": 326,
       "cols": 2,
@@ -1033,9 +1165,9 @@
       "sha256_sorted": "4897d0c2f42e86bcdf0a5e67a007efdd184c9e72a000bee17cc2cff04b5cefce"
     },
     "parsed/30-3-USA-7x7-V2/0000100_SEED42/transform_manifest.json": {
-      "bytes": 398,
+      "bytes": 432,
       "kind": "json",
-      "sha256": "fce7a000bbc429ba5041554b4428fb847a44503bdf0f38f9b10f7af9fb47d03a"
+      "sha256": "1434dfc0e7b57e792a3629a519fcde5422f1e58d593be7bb1e0f7fcd11ca68e5"
     },
     "unparsed/30-3-USA-7x7-V2/DATA_S100_13/aircrafts.csv": {
       "bytes": 640,
@@ -1714,6 +1846,28 @@
       ],
       "sha256": "019435fcab39ee5911c97c8de338c5505c8df0e41c5ed264a28fae0308f27276",
       "sha256_sorted": "e285257c9afa680bc2c43fa23be485c81a8b40c23b1e5aaaa3e578be0eae69e7"
+    },
+    "unparsed/30-3-USA-7x7-V2/navgraph/navaid_sector_schedule.csv": {
+      "bytes": 2647,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "470a0640147d527309eb56f0d69d69f29fe75eda68c3baf737cd34c25c964937",
+        "Navaid_ID": "f07bb3ee02e50351d82f8fa6cae75a25f8d5f42eb33b5b4bb665e44c1cbd1ab4",
+        "Sector_ID": "5396fc77de10b22fbe8da4899f444749ee827c3b14bab7d71cff9ae69404d1eb"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 57,
+      "sample_rows": [
+        "KATL,SECTOR_AIRPORT_KATL,0",
+        "KBOS,SECTOR_AIRPORT_KBOS,0"
+      ],
+      "sha256": "ef70abcbd097111e302508c1a61232bfb63810b763844a771d82a3b38bba8dc3",
+      "sha256_sorted": "eecf5b73dad0ffa04b470cc576fc88579d607c7c7e3a0bf58c94152adae641be"
     },
     "unparsed/30-3-USA-7x7-V2/navgraph/run_config.json": {
       "bytes": 1152,

@@ -152,6 +152,28 @@
       "sha256": "5ccde102084d44b675dd820e1a986e4bfe7d79eded63df43d1e96fb1c373a81a",
       "sha256_sorted": "a62192bce8f6c95a6908142bbc149fb36c3a43110d5380716f84e511a7373115"
     },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/navaid_sector_schedule.csv": {
+      "bytes": 146,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "a48ba2b371fcf0dd8b1fefc6309a5e2af40db74d92a46e1d0e98774dbcfa8995",
+        "Navaid_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c",
+        "Sector_ID": "1a008325970bf241b6634eb5000abe82b832db52fb06836c60ff79a83310a512"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "21a6cd543fc0353c793d512f33d47f12c4af38a3beb8c602c03fcacdb36b5e45",
+      "sha256_sorted": "39b7332c0835c925a50b2aff30930ba86f0f2c8de9f87d14c0cab95b69ad85b6"
+    },
     "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/sectors.csv": {
       "bytes": 126,
       "cols": 2,
@@ -173,9 +195,9 @@
       "sha256_sorted": "c0d5b2ea8e652cccdfe09a761f852a37991937a44b48dcee416e8cec6884881f"
     },
     "parsed/30-0-EAST-ASIA-3x3-V2/0000050_SEED42/transform_manifest.json": {
-      "bytes": 402,
+      "bytes": 436,
       "kind": "json",
-      "sha256": "112cdbf2c0c5e20d6642f15a11ddec23c2dad66b3b55192d03aad71be3288836"
+      "sha256": "e57b2309b5574d3d19215f22851996e07972946e4cdaa04e1bb6131df8d3e9a1"
     },
     "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/airplane_flight_assignment.csv": {
       "bytes": 582,
@@ -324,6 +346,28 @@
       "sha256": "5ccde102084d44b675dd820e1a986e4bfe7d79eded63df43d1e96fb1c373a81a",
       "sha256_sorted": "a62192bce8f6c95a6908142bbc149fb36c3a43110d5380716f84e511a7373115"
     },
+    "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/navaid_sector_schedule.csv": {
+      "bytes": 146,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "a48ba2b371fcf0dd8b1fefc6309a5e2af40db74d92a46e1d0e98774dbcfa8995",
+        "Navaid_ID": "77934e2a842cb08adedd23ed2e5e9e033b97be4464020be6296b88099e1be55c",
+        "Sector_ID": "1a008325970bf241b6634eb5000abe82b832db52fb06836c60ff79a83310a512"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "0,0,0",
+        "1,0,0"
+      ],
+      "sha256": "21a6cd543fc0353c793d512f33d47f12c4af38a3beb8c602c03fcacdb36b5e45",
+      "sha256_sorted": "39b7332c0835c925a50b2aff30930ba86f0f2c8de9f87d14c0cab95b69ad85b6"
+    },
     "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/sectors.csv": {
       "bytes": 126,
       "cols": 2,
@@ -345,9 +389,9 @@
       "sha256_sorted": "c0d5b2ea8e652cccdfe09a761f852a37991937a44b48dcee416e8cec6884881f"
     },
     "parsed/30-0-EAST-ASIA-3x3-V2/0000100_SEED42/transform_manifest.json": {
-      "bytes": 404,
+      "bytes": 438,
       "kind": "json",
-      "sha256": "9b0832ccdf34fa0ee947b8c790cd79f31ea52d6d029d30e9941ab3dd6d57e865"
+      "sha256": "22e4381e3d3e10b16b4061b07c3342b3620fdf12edfebba36498c4fc63f394a6"
     },
     "unparsed/30-0-EAST-ASIA-3x3-V2/DATA_S100_42/aircrafts.csv": {
       "bytes": 712,
@@ -694,6 +738,28 @@
       ],
       "sha256": "f4f023446d89a6b98b976f3ab5a6c048e3d12567c71a38073b57b083674e93e8",
       "sha256_sorted": "46dac09ca38f393bd42d73b1bb3660d19a9ed919371156d6d672171cb6275e57"
+    },
+    "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/navaid_sector_schedule.csv": {
+      "bytes": 642,
+      "cols": 3,
+      "column_sha256": {
+        "From_Time": "a48ba2b371fcf0dd8b1fefc6309a5e2af40db74d92a46e1d0e98774dbcfa8995",
+        "Navaid_ID": "a498c8379cff64ff07a4da2c6c4317a1d42cc3a8ac5017e189606d5275b4c6f6",
+        "Sector_ID": "68ba312a006730f8a96583e8cb6533ac59da5d754e498c7bd52ef45f43e08583"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID",
+        "From_Time"
+      ],
+      "kind": "csv",
+      "rows": 17,
+      "sample_rows": [
+        "RCKH,SECTOR_AIRPORT_RCKH,0",
+        "RCTP,SECTOR_AIRPORT_RCTP,0"
+      ],
+      "sha256": "c085c1bc2fafe1d26f2957b189e0c1b4b5834988dbf4f90b9093aa40e1fd3bbb",
+      "sha256_sorted": "6d9631ef734ccdb99c526a6dec2bf06fb0e875cd4d8c7058ebdf611f0afe39b3"
     },
     "unparsed/30-0-EAST-ASIA-3x3-V2/navgraph/run_config.json": {
       "bytes": 1157,
