@@ -216,7 +216,7 @@
         "F0000001,EDDK,16",
         "F0000001,BIBOS_FL300,17"
       ],
-      "sha256": "a41fb966bc3951855193295889104cad04066536d80e2fa9e825a444317a17b1",
+      "sha256": "6e747017d27f61fdba19d85707b734314ab56c4d842ae94bb5e3825514bda5e9",
       "sha256_sorted": "d954570b8c50501b6e150a26125168e1c95cd819bf044eeb66c312696e6958fe"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG15/DATA_S300_42/flights.csv": {
@@ -225,14 +225,14 @@
       "column_sha256": {
         "_lineno": "096b0792be79053300b69433a7ba09a6027044a8b125aa067ccf4446660a889d",
         "aircraft_id": "da51761ffe6302d75dfd391d74e1ffd247ca3c04e380abd32c0bb04a0e4e5a91",
-        "departure_time": "6ead259813c84493efabe6d32bb9b49144e056bc553416aff3cf0e5f48584b24",
+        "departure_time": "616f2cedb1d83191105e052a46235549f688f8373770c01ed6846f1a0f4a75f6",
         "destination": "46b2b633b2a17bfd59b30f00a8cdf84841910e43c52001fa2949adc8c94cf81d",
         "dst": "46b2b633b2a17bfd59b30f00a8cdf84841910e43c52001fa2949adc8c94cf81d",
         "flight_id": "2402c548a4b7ed81066edf9ac724c0e596ed4040b48b16046a534103c8ed9c44",
         "origin": "7630c79e6c9928f5685772721dd69763df6576e19cecd1863cf54feadebca53d",
         "speed_kts": "12dced8e6a550cf96044976a5063a8d7d70e201095fde1e103f76dfc2d59e581",
         "src": "7630c79e6c9928f5685772721dd69763df6576e19cecd1863cf54feadebca53d",
-        "start_slot": "67aae47b84b9cde7ef2341da437855ab6e56f08cc21dfcc2472120f576e8e565"
+        "start_slot": "551080db9f2ce3ccba1708529c55b40a5e531604629012c0867d7332e23266a1"
       },
       "columns": [
         "flight_id",
@@ -252,8 +252,8 @@
         "F0000001,AC000001,EDDK,LOWW,2019-06-01 01:05:08-01:00,2,EDDK,LOWW,16,480.0",
         "F0000002,AC000002,EBLG,EDGE,2019-06-01 01:19:41-01:00,3,EBLG,EDGE,19,430.0"
       ],
-      "sha256": "5628b74dfec07d7c9d8d0669ad8e90794d5bf98b9bbb21fd1ee69d9a9f5ca280",
-      "sha256_sorted": "74f0806f54a9ccf99b033c7d1b57dd9460f8b881459a4a9bdad1d3bacc2b866c"
+      "sha256": "0b2e88b1409f4d53f1e5398ecdacb3b072621c1099acfbf24bd2222032178d6b",
+      "sha256_sorted": "ae1cbe58cc21a5a5b956ba8eb1f066bd5c6610baf760f361542f58066e9cd1a7"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG15/DATA_S300_42/run_config.json": {
       "bytes": 289,

@@ -866,11 +866,11 @@
       "sha256": "9216ed268899be14b3c4a37846f1918028cba11de79b3fe7cf918ac51a28fb7b"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/airplane_flight_assignment.csv": {
-      "bytes": 579,
+      "bytes": 577,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "83780a05839c231f08f2a6a4e2df4031092030f732be79a9234a0679172be088",
-        "Flight_ID": "7d7f2ce0d4ab6afefb8797cf3700ff7ff4198ccd40a5f77f0f9bd4f8a5f79292"
+        "Airplane_ID": "93c9153047f39ecccbb5f399456fa66fb8189e2380a3633478cf0418000984d9",
+        "Flight_ID": "f51da9104e19ff68751b1cc7085a449b2fb0bc09a08a00cb3e6a88c44615dc10"
       },
       "columns": [
         "Airplane_ID",
@@ -882,28 +882,28 @@
         "0,0",
         "0,27"
       ],
-      "sha256": "40a77b55a357700ff5d882e4c334f3ed2417c95b3daa8e5b3c3666f2e45da396",
-      "sha256_sorted": "ab5b10633afa6b1b84173223c85af860ffc75873047af28a947ad41c105b5497"
+      "sha256": "4d5e121eead0278a6bc5315dba98d4e1ba1f1cf9f36c6ac0edba13bb1451206b",
+      "sha256_sorted": "1e45e2229ed01bf7c4582e899b8faef48a644dd30518dea5c4e3b3695437bd63"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/airplanes.csv": {
-      "bytes": 426,
+      "bytes": 408,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "ac74391f445fffbe4747ad40e8270e9cee1b655e30104275caa357913a6679d5",
-        "Speed_kts": "7666d0a52c14c744a2102c7121320d5b1c0b54b430d3d0f177217bff10884b86"
+        "Airplane_ID": "650d68625f35859a53113c1a5aa19ee3e4fd5c10dc16e5853b6d6cc4e6b9d6b1",
+        "Speed_kts": "be22594082538c6199094c3146664197297328f692b6addc5fe7ad72f321efc9"
       },
       "columns": [
         "Airplane_ID",
         "Speed_kts"
       ],
       "kind": "csv",
-      "rows": 46,
+      "rows": 44,
       "sample_rows": [
         "0,480.0",
         "1,450.0"
       ],
-      "sha256": "d2ca547da2712c9321745b0f1ab460253c6dc5a3a292ac20198f62ee0e04854f",
-      "sha256_sorted": "f882ffcb3415526f448000cf2c5df72305f861454f45d471dcad4de40a840565"
+      "sha256": "27811766e20f7d2b4a119daac152b571895bc783060662d3a40c69b53492f973",
+      "sha256_sorted": "2181cdd28cb917cc0f38ebe740b49cd600b35db1f2bbee5b8b799eebdf783456"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/airports.csv": {
       "bytes": 79,
@@ -924,12 +924,12 @@
       "sha256_sorted": "5b8eb321b5efe1a0ea8cf0a50a5843889cfc5361ae538539f51bf0b8bd6ef545"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/flights.csv": {
-      "bytes": 4616,
+      "bytes": 4589,
       "cols": 3,
       "column_sha256": {
-        "Flight_ID": "d3802b80d3380cd81fdf25620bfc46ad4add949e8d9cc7baebb7791e9e9ad3df",
-        "Position": "4fd08050c8202090f304b369b74c5257acee17ed7ae56153a679145017c6cdcc",
-        "Time": "9f060bd4f90146f0eafff860977b2f172908c83cdf4b5c5bc5f221a21452ddf8"
+        "Flight_ID": "58bdb0b253dee5f9b2acf180d8f4c327fd0114c551f6f8e316e82c7e24f18294",
+        "Position": "bc6c294cd75754cf727c588f1088d1a226ef1f2c2180b0fee6d002fe61a46c44",
+        "Time": "1e889d9019ea675daac7de854e393ca53ff504de27d76373848e19a55b3137f8"
       },
       "columns": [
         "Flight_ID",
@@ -937,13 +937,13 @@
         "Time"
       ],
       "kind": "csv",
-      "rows": 512,
+      "rows": 509,
       "sample_rows": [
         "0,111,1",
         "0,3,2"
       ],
-      "sha256": "ed64a54e1865a7041907de147568a9f7f9f283bc5b1f882db202690f6f0454ba",
-      "sha256_sorted": "a147068e2df89cd3aa8c934e6f82d281232e356dfd858ad838028b2dd1c1c372"
+      "sha256": "661cb709134e23a9b556ca124f19ebe30b11d27cf75de289cc8fe56809d98bbd",
+      "sha256_sorted": "73c67fc532115db623369ce7dbd89743f035c6d3ab8b81e650b5f7d1319dd1ec"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/graph_edges.csv": {
       "bytes": 6780,
@@ -968,9 +968,9 @@
       "sha256_sorted": "69b05927d16fc26f10bc6eb07cd896752c63f99a33ada240d1240b55cf8f27b4"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/mappings/id_maps.json": {
-      "bytes": 6818,
+      "bytes": 6718,
       "kind": "json",
-      "sha256": "95d8500bcc86a361a119845a95d605fcf54ed8246d750a409d2b8ab731882b2d"
+      "sha256": "d05ed9fad6689b6daa5809d36b27d1f849d226233036bb8025f8685ce8563679"
     },
     "parsed/30-4-MAJOR-EUROPE-10x10-V2/0000100_SEED42/mappings/vertex_map.csv": {
       "bytes": 3555,
@@ -1076,23 +1076,23 @@
         "F0000001,LFPG,2",
         "F0000001,GRID_MAJOR-EUROPE_Y04X03_FL100,3"
       ],
-      "sha256": "3286fc11cef8e5266c864d60001adbd7c0f14a0b34bfc493471032950b89b623",
+      "sha256": "fb15841633a11b06af96e24cd2537318e92249f7aea2670e3c1f456eb6bc6bde",
       "sha256_sorted": "a1bc4e98b38408c1b6cc71ab9a718a45b6de1f7f0fc8c8e1163dee1f52156ce1"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_13/flights.csv": {
-      "bytes": 7643,
+      "bytes": 7646,
       "cols": 10,
       "column_sha256": {
         "_lineno": "adc4d64fe9531e179ed12975858a1c70fcb9f1f654729f86634290e4dc0a6da8",
         "aircraft_id": "a83a500ba1af8213fac239ce939ead1d4c6ccf9bd4ccdb5a66d530b525482632",
-        "departure_time": "23a5e623ad5b6da6e3c0159fefdd491192f408139572ad6c263c330c1565d11d",
+        "departure_time": "d387dbf89c81459f095b0ae5e7d1da1622398a845a7f3d5763dfc4d4a61fdd20",
         "destination": "3254c45ff61c24929d5be7363aedc2732e1b0544e843bbfe6b73c75f398c2af8",
         "dst": "3254c45ff61c24929d5be7363aedc2732e1b0544e843bbfe6b73c75f398c2af8",
         "flight_id": "27a72379d59314cc3b2a32b249760640d6ed4d6b50094fb160a3ed05f0e9a951",
         "origin": "5eb890d3f079b6b963b7864efcf90a45d97206c4f6d3893bc5a940d21b3d282c",
         "speed_kts": "a2061b40dd12197997f0cd0fed43cca8e8bccccc03d68dbc60216c48a9bc54f6",
         "src": "5eb890d3f079b6b963b7864efcf90a45d97206c4f6d3893bc5a940d21b3d282c",
-        "start_slot": "8b8fb27309182744622ac8613ee352c3c5f20c32c266f2e0b67c7008af0a7c09"
+        "start_slot": "912e8dc2fbd2dcae8f30c455304a98e78b35e90e5b4baa2b38289f3d4ed24023"
       },
       "columns": [
         "flight_id",
@@ -1112,8 +1112,8 @@
         "F0000001,AC000001,LFPG,LEMD,2019-06-01 02:10:50-01:00,2,LFPG,LEMD,2,450.0",
         "F0000002,AC000002,LROP,LOWW,2019-06-01 02:53:25-01:00,3,LROP,LOWW,2,450.0"
       ],
-      "sha256": "5e43f196b49205de22cffee5aa9b76a101675672ebf939ea74633955c3a16ef6",
-      "sha256_sorted": "66134158e439e37d16b68ae14579ccf12e660fff67848d8e34f201705d1e2591"
+      "sha256": "b7a695eae32aa7bdd6c480a2d6ccbef13be6e89b28c63481058e7aac2b9f792c",
+      "sha256_sorted": "877b50e544279777bc1faf533b1648a881ab97ab6dc3e2527d5e06f6c09b2aea"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_13/run_config.json": {
       "bytes": 289,
@@ -1121,32 +1121,32 @@
       "sha256": "9693dfca56eae11ef14a39680b8c27aab6bc38e97e8b6cdee505a322cdec4311"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_42/aircrafts.csv": {
-      "bytes": 716,
+      "bytes": 682,
       "cols": 2,
       "column_sha256": {
-        "aircraft_id": "aa8f9ea922d3723d487ee191e91914595628e4b22159c71bd3446926214a11b9",
-        "speed_kts": "4084ddf303d0d4abb9b9e2bf61531bfcbd3b116f4c0c31575ba80968084ffc03"
+        "aircraft_id": "76181a558997e2724fe79c5d3d2ce8a6d31d2b27df981e68bb34847b7ea6e1d2",
+        "speed_kts": "11bc3eed15d4e57d64cf8129b6f35ebc688fcf20f0467d24a6e7a5e01ce10982"
       },
       "columns": [
         "aircraft_id",
         "speed_kts"
       ],
       "kind": "csv",
-      "rows": 46,
+      "rows": 44,
       "sample_rows": [
         "AC000001,480.0",
         "AC000002,450.0"
       ],
-      "sha256": "e9255c412ab401c19ff151033d9aa80a79769dc4db116d788363d7adad0ef33d",
-      "sha256_sorted": "4aa41442f923032e12f3e98fc0bcdfd0ec88bd678368cde427239fb9896a4ee6"
+      "sha256": "c3f8962c0c876d8dd0df179676f4f480d6ecacca4b14bce5fdfcaf14adb63796",
+      "sha256_sorted": "fdceb35bd5ca2ed9260a65ece114fce71d27ab861e590e9e078dec2faf3bb24c"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_42/filed_flights.csv": {
-      "bytes": 16685,
+      "bytes": 16556,
       "cols": 3,
       "column_sha256": {
-        "Flight_ID": "d68a5063e3b87acc96ecc3e55a096618a07a71f0796d3702ee0386a12dc06546",
-        "Position": "b8b3d3f379ce4e76046c66a658953c105c80a71d8bcdb00fb23dbeafad8b1f70",
-        "Time": "12caee89083f2435ad2a863f8df1663be309d6ad9e42546edc9538866bf3d922"
+        "Flight_ID": "9f5a7ecac0306213542b3cc32b88f39295b31f6dde91aed02602869dc0df31e0",
+        "Position": "bf1f22bda3fac52fbf22765f696b3a48a7668195d707b4155b7a3ff125439513",
+        "Time": "51c19b372851e35bc8218959a3ef2c686b10503794be58aec611b1876891e6f2"
       },
       "columns": [
         "Flight_ID",
@@ -1154,28 +1154,28 @@
         "Time"
       ],
       "kind": "csv",
-      "rows": 512,
+      "rows": 509,
       "sample_rows": [
         "F0000001,LPPT,1",
         "F0000001,GRID_MAJOR-EUROPE_Y01X01_FL100,2"
       ],
-      "sha256": "826660892e1686182e20caa9f1a4375dc5490d2b914f7a887fe0a15b5a308139",
-      "sha256_sorted": "ee8f60250244f1df48f537feaaa498b200a836e3f2ea5bbac259ff3a25292a40"
+      "sha256": "5c98f7599c7b0b9daff47d5742f3b034ff1e35de309cd2e030f7909c2ec1ed81",
+      "sha256_sorted": "1290097246e070a54acc7cc5e51a1c8ee7733f67bcd5141cb8673472d2aa5b10"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_42/flights.csv": {
       "bytes": 7642,
       "cols": 10,
       "column_sha256": {
         "_lineno": "adc4d64fe9531e179ed12975858a1c70fcb9f1f654729f86634290e4dc0a6da8",
-        "aircraft_id": "954769799fc2d70435c93e2f84c1bf91359d8de6fd515e5703c17a356cfa4551",
-        "departure_time": "9c0ebbabb5d0452094fb1c20e6b50d39582d3ebdfc92f69a872bee25214ba91e",
-        "destination": "49c54e3a0a15d8a804dac11e521ba7189e31c1ebb3f4830668bac50c27a03e46",
-        "dst": "49c54e3a0a15d8a804dac11e521ba7189e31c1ebb3f4830668bac50c27a03e46",
+        "aircraft_id": "b15134bc884544cd8b753cc0357980dee48313bd67a185a974b67449442787e1",
+        "departure_time": "e02cce1cd1ce4d90bed63380155821c63ad140910de07cc2d474659681078346",
+        "destination": "fa3eea5932720731fe884728f68b3c783e050be50f8ed929400edc018a5ec163",
+        "dst": "fa3eea5932720731fe884728f68b3c783e050be50f8ed929400edc018a5ec163",
         "flight_id": "27a72379d59314cc3b2a32b249760640d6ed4d6b50094fb160a3ed05f0e9a951",
         "origin": "5ed05be4c8f88fc42c1c343e08686caad61e0112f9fc46bb3835a5728edb275b",
         "speed_kts": "82c6c391356f2ec8833fba990d6d66a1e40d3f9aff777eb9793ab3570861e945",
         "src": "5ed05be4c8f88fc42c1c343e08686caad61e0112f9fc46bb3835a5728edb275b",
-        "start_slot": "ccb97c246a83fb6cdc362bc23de5a76d1a402ffc0a34b8928c2ffc44474ceb79"
+        "start_slot": "ecadf0ed764c669c617f02f1fccf66dbb5ec6c9678bc8f92b4ced3d46fd84975"
       },
       "columns": [
         "flight_id",
@@ -1195,8 +1195,8 @@
         "F0000001,AC000001,LPPT,LSZH,2019-06-01 01:07:23-01:00,2,LPPT,LSZH,1,480.0",
         "F0000002,AC000002,EKCH,LSZH,2019-06-01 03:02:39-01:00,3,EKCH,LSZH,3,450.0"
       ],
-      "sha256": "b09fbd491047c112e40a74651406c8887ddfead4ef1c3c1e050c870e39979bb8",
-      "sha256_sorted": "559d7fe9c58a2fc7d1150b2791ee1ef7a6d6ef9aa657f2d9170a14172f17ff55"
+      "sha256": "08b70dd97cbf68a6d2b4b33c0aa471f1ff4bc781ece1245c8e1c3bc5cd43ee1e",
+      "sha256_sorted": "0284cfc2a9c936d0a31d751150fef522bde3e15716f63560546287ed9e077fa5"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S100_42/run_config.json": {
       "bytes": 289,
@@ -1242,7 +1242,7 @@
         "F0000001,LIRF,7",
         "F0000001,GRID_MAJOR-EUROPE_Y02X04_FL100,8"
       ],
-      "sha256": "5203f6d396132d4c9e7b613aba57552e8a01a2b4946104cb5f32fe6da5faffa1",
+      "sha256": "9927a893fe076afad36c65b30afac6c8fbdb51be6ff63466c366c47fb838e682",
       "sha256_sorted": "a693e854c052182b892a6adad8486c75705a4a7bcf95eaf4c92f3ee2c7967c10"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S10_13/flights.csv": {
@@ -1325,7 +1325,7 @@
         "F0000001,LSZH,4",
         "F0000001,GRID_MAJOR-EUROPE_Y05X04_FL100,5"
       ],
-      "sha256": "e626776e7eec18575fb49307413816559e6ea18b6fa078897fb844ac0a1c0e7f",
+      "sha256": "3128d90e3a631d2c4aae13a397b98b8f7d0a5b0039814edafb00ee41e62ef4ff",
       "sha256_sorted": "848717821d8cb71d8577d867460e1cb146178b63178d75b3e34b5d114fa8215f"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S10_42/flights.csv": {
@@ -1408,23 +1408,23 @@
         "F0000001,LFPG,2",
         "F0000001,GRID_MAJOR-EUROPE_Y04X03_FL100,3"
       ],
-      "sha256": "f78df70f952b246b295f95bf999d309f4e02f5ca6b5e32bbcb50172fa4da4ebd",
+      "sha256": "a17df8f6e65f814423b2ef19fd23b1a66346be83680be42058879b39713d6b06",
       "sha256_sorted": "fd81b6a363f22b0921a5c007eff71a590ee18967b537b8bca06ffa3a70ee6991"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S50_13/flights.csv": {
-      "bytes": 3864,
+      "bytes": 3865,
       "cols": 10,
       "column_sha256": {
         "_lineno": "899a3ecdf077dde1e732706a0b94ae9449c044d1562459302db5b5efdd0b81c1",
         "aircraft_id": "e5601664eaf810cafa901007a6f9461fd52e81f9de5fffb61fb342b3829fdc1e",
-        "departure_time": "a391550f44d8fbeaca09fb5aa973071743ddf017916e4e5c65f016387aa1837b",
+        "departure_time": "0f90f53b2962b94a4758bf70889cadc591d0908d875a8868cc8cd9ee0626a050",
         "destination": "3a3d80f81848e232465024550ba6d969e583a071330dcd6783de29533b9a31a0",
         "dst": "3a3d80f81848e232465024550ba6d969e583a071330dcd6783de29533b9a31a0",
         "flight_id": "72d805fe9df037c239e008273e33f14e27489c6d256214d5ddbf67e3e03ecc45",
         "origin": "254514d2489fb8f6f263590748d3ba9e3708c5403a891d6b70128f4d7decd897",
         "speed_kts": "35488854c77cc9a04c63da74b75c674e9deba87ca6ef13332205cbbc076f43f3",
         "src": "254514d2489fb8f6f263590748d3ba9e3708c5403a891d6b70128f4d7decd897",
-        "start_slot": "05b9149fa792f14280616b9346e4ccb3921a1297e329fdae9773883a2d16a16f"
+        "start_slot": "d870b39c4675a26730ebb414ebe9397e57c241a5e5e309c70214b3a3d37e5533"
       },
       "columns": [
         "flight_id",
@@ -1444,8 +1444,8 @@
         "F0000001,AC000001,LFPG,LEMD,2019-06-01 02:10:50-01:00,2,LFPG,LEMD,2,450.0",
         "F0000002,AC000002,LROP,LOWW,2019-06-01 02:53:25-01:00,3,LROP,LOWW,2,450.0"
       ],
-      "sha256": "2510c2cceb8b51c5a3b05ad06cb8a0a0734d91300407703ec6e5c884467fcd1b",
-      "sha256_sorted": "7fea5707b56b240162250d8fa0f6a025a27bc96f3b00c0d54c14b03fc4a3dce9"
+      "sha256": "4ca20626a74af4f129f623958547189bb64f7e4c00c12a6ff44b0f677e8fd97d",
+      "sha256_sorted": "d61af07442f04c88580ffe27a8be6955821acd9fcb7c78981aff35ecc383b886"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S50_13/run_config.json": {
       "bytes": 285,
@@ -1491,23 +1491,23 @@
         "F0000001,ESSA,3",
         "F0000001,GRID_MAJOR-EUROPE_Y08X06_FL100,4"
       ],
-      "sha256": "7e2d874250db842460324da89ecd72fa8507644770a409874c529e8b00e23436",
+      "sha256": "a06dad80190e2a181889940daa1bcdad8159b2ed00d4c7a8436a4d69a476c7c3",
       "sha256_sorted": "3d83618c11043c2cbcdfcaf7f0d740123c7244f5f601770359a849f0d530edfb"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S50_42/flights.csv": {
-      "bytes": 3858,
+      "bytes": 3859,
       "cols": 10,
       "column_sha256": {
         "_lineno": "899a3ecdf077dde1e732706a0b94ae9449c044d1562459302db5b5efdd0b81c1",
         "aircraft_id": "4cb186805246dee4c58cb4e3bc967446ab1d0c7c637677e980e95a34aa72f70f",
-        "departure_time": "a02a295217b3aa7a7e0018c2ba384f946f6f70b32b2013b18d4f778e66ea3f45",
+        "departure_time": "e962607d4eac7439eebd08e29c7f18d2df38e83899d8251b94f3982e7508011a",
         "destination": "0afbbbdb4bde578a583ca00b20056f783d81a5e4b982705fcad533955a72077f",
         "dst": "0afbbbdb4bde578a583ca00b20056f783d81a5e4b982705fcad533955a72077f",
         "flight_id": "72d805fe9df037c239e008273e33f14e27489c6d256214d5ddbf67e3e03ecc45",
         "origin": "83a28c9dec66148d49e884ce4a6129e1d33d59cda32b4a1bb2c538936ba8fc38",
         "speed_kts": "b93ca85fd284bf5889accc90bae6ba4d8dd9c8f099f482f4de1382403f30cbcb",
         "src": "83a28c9dec66148d49e884ce4a6129e1d33d59cda32b4a1bb2c538936ba8fc38",
-        "start_slot": "8f9302deb0c5a50f10e68be73b3d49ee4affe185a2332e2eeecc4fb14fb1bf6b"
+        "start_slot": "0dc383904f85a4516ca4f7a20aa4ecabbda433bef76b6e16236980007d539721"
       },
       "columns": [
         "flight_id",
@@ -1527,8 +1527,8 @@
         "F0000001,AC000001,ESSA,EDDF,2019-06-01 03:34:31-01:00,2,ESSA,EDDF,3,450.0",
         "F0000002,AC000002,EPWA,LFPG,2019-06-01 03:38:15-01:00,3,EPWA,LFPG,3,480.0"
       ],
-      "sha256": "7b53ce6bfc5ca7e24a2491c1e40f00f9a17ab5ede9f3b7ef93be3c486c6ff9e5",
-      "sha256_sorted": "99fb0c6c41bdb755122f0b622f4b754962afb47191cc0af7f7d5dbc98b1c51bd"
+      "sha256": "f04eb71cea00d555ef994bffa8aae243bb1ef2f2197aa080acfb38b0b843a170",
+      "sha256_sorted": "649e5d8156b1c5fbfa47e27763593e9e3a51214b02014a4677bdfbbd45378158"
     },
     "unparsed/30-4-MAJOR-EUROPE-10x10-V2/DATA_S50_42/run_config.json": {
       "bytes": 285,
