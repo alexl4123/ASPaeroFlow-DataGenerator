@@ -93,7 +93,7 @@ python 06_capacity_sweep.py --exp-dir experiment_data_.../<REGION> \
 | `--grid-navpoints` | synthesise grid vertices instead of reading X-Plane navdata |
 | `--criterion {gabriel,rng}`, `--max-edge-km` | navgraph topology |
 | `--cap-enroute`, `--cap-airport` | per-timestep capacities written into `sectors.csv` |
-| `--resample-seed` | seed for stage 04's destination resampling |
+| `--resample-seed` | seed for the replacement legs stage 04 draws to hold the flight count |
 
 ---
 
@@ -110,9 +110,12 @@ is the solver's choice — the reference optimizer offers `max` (default), `sum`
 rules.
 
 **③ The 24-hour window is a hard contract.** Every flight departs and lands within
-`[0, TG × 24]`. Stage 04 enforces it by resampling a nearer destination when a drawn flight will
-not fit, and raises rather than silently shipping a short instance. A consequence is that
-instances begin and end with empty airspace.
+`[0, TG × 24]`. Stage 04 enforces it by ending an airframe's day at the first leg that will
+not fit: that leg and every later leg of the same airframe are dropped, so what remains of the
+rotation still meets airport to airport. The instance is then topped back up to the configured
+`|F|` with legs that either continue a parked airframe or start a new one, and the stage raises
+rather than silently shipping a short instance. A consequence is that instances begin and end
+with empty airspace.
 
 **④ Stage 04 is NOT idempotent.** It rewrites `flights.csv`. Re-running a pipeline must start from
 stage 01, not stage 04 — delete the `DATA_*` directories first. This is not merely tidiness, and it
@@ -330,6 +333,7 @@ Exit code 0 = all passed, 1 = violations, 2 = usage error, so it gates a generat
 | `D3`/`F7` | flights start and end at airport vertices |
 | `C4` | no flight returns to its origin airport |
 | `D4`/`F4` | two legs of one airframe are ≥ 1 timestep apart |
+| `D8`/`F10` | an airframe's next leg departs from the airport its previous leg landed at |
 | `P9` | `transform_manifest.json` agrees with the directory name |
 
 The identifiers are the ones used in `dataset_analysis_JOAS/00_generator_integrity/` and the dev
@@ -384,7 +388,9 @@ a property of each region's graph:
 durations.
 
 Coarse granularity also changes which flights exist. Every flight must fit the 24-hour window, and
-at TG=1 the day is only 24 timesteps, so long routes are replaced by nearer destinations. Measured
+at TG=1 the day is only 24 timesteps, so a long route ends its airframe's day and the instance is
+topped back up with a nearer one. It also changes how many airframes there are: at TG=1 one route
+already consumes most of the window, so most airframes fly a single leg. Measured
 on DACH at |F|=1000 (3 seeds, 3,000 flights), with the real reference taken at the same timestep:
 
 | TG | 1 | 4 | 15 | 60 |

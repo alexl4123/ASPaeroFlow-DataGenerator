@@ -272,11 +272,11 @@ def _walk(G_spd, path, fid, start, nodes_are_int, vid_to_ident):
 def _resample_destination(G_spd, src, start, window, airport_vs, dest_weight, rng,
                           fid, nodes_are_int, vid_to_ident, max_tries=12):
     """
-    Pick a REPLACEMENT destination whose route fits in the remaining window.
+    Pick a destination reachable from ``src`` at ``start`` whose route fits the window.
 
-    Alexander's rule (2026-09-08): a flight that cannot fit time-wise is dropped and a shorter
-    one resampled, and the requested flight count must always be met exactly. So we never
-    truncate and never drop a row from the instance -- we re-draw the destination.
+    Used for the REPLACEMENT legs that top the instance back up to the requested flight
+    count after truncation has removed some.  ``src`` is always the airport the airframe
+    actually stands at, so a leg drawn here continues the rotation instead of breaking it.
 
     One Dijkstra from the origin bounded by the remaining budget gives every reachable airport
     at once; we then draw among those, weighted by the empirical destination marginal so the
@@ -313,6 +313,9 @@ def _nearest_fitting(G_spd, src, start, window, airport_vs, fid, nodes_are_int, 
     """
     Nearest reachable airport, departing early enough that the leg completes in-window.
 
+    Only ever used for a leg on a FRESH airframe, which has no predecessor to stay behind:
+    moving the departure earlier cannot collide with a leg this airframe already flew.
+
     Keep the departure as close to the sampled one as possible: pinning every fallback flight to
     `window - duration` would make them all land exactly on the window edge and build an
     artificial arrival spike in the last slot.
@@ -337,28 +340,43 @@ def _nearest_fitting(G_spd, src, start, window, airport_vs, fid, nodes_are_int, 
     return None
 
 
-def _replace_origin(G_spd, start, window, airport_vs, origin_weight, dest_weight, rng,
-                    fid, nodes_are_int, vid_to_ident, max_tries=8):
+def _fresh_leg(G_spd, start, window, airport_vs, origin_weight, dest_weight, rng,
+               fid, nodes_are_int, vid_to_ident, max_tries=8):
     """
-    Last resort: the sampled origin can reach NO airport at all (isolated component).
+    Draw a whole new leg -- origin and destination both -- for a brand-new airframe.
 
-    Redraw the origin too, so the requested flight count is still met exactly. This should never
-    fire on a connected navgraph; it exists so that a degenerate graph degrades gracefully
-    instead of silently producing fewer flights than requested.
+    This is the top-up of last resort.  It is safe for continuity precisely because the
+    airframe it is drawn for has flown nothing yet: with no previous leg there is no airport
+    to depart from, so any origin is admissible.  (It is the descendant of ``_replace_origin``,
+    which drew a new ORIGIN for an existing airframe's leg -- the single worst source of the
+    broken rotations this change removes.)
+
+    Origins are drawn by the empirical origin marginal and destinations by the destination
+    marginal, so the OD distribution moves as little as the constraint allows.  Bounded: at
+    most ``max_tries`` origins, each with a bounded destination draw, then one sweep that
+    also allows an earlier departure.
     """
     cands = list(airport_vs)
     if not cands:
         return None
     w = np.array([float(origin_weight.get(v, 0.0)) + 1e-9 for v in cands], dtype=float)
     w /= w.sum()
-    order = rng.choice(len(cands), size=min(max_tries, len(cands)), replace=False, p=w)
-    for i in order:
-        src2 = cands[int(i)]
+    order = [cands[int(i)] for i in
+             rng.choice(len(cands), size=min(max_tries, len(cands)), replace=False, p=w)]
+    for src2 in order:
         alt = _resample_destination(G_spd, src2, start, window, airport_vs, dest_weight, rng,
                                     fid, nodes_are_int, vid_to_ident)
         if alt is not None:
             dst2, rows2 = alt
-            return src2, dst2, rows2
+            return src2, dst2, rows2, int(start)
+    # Nothing fits from the sampled departure slot: keep the origin draw, move the departure
+    # earlier.  A fresh airframe has nothing behind it, so this cannot overlap anything.
+    for src2 in order:
+        alt2 = _nearest_fitting(G_spd, src2, start, window, airport_vs, fid,
+                                nodes_are_int, vid_to_ident)
+        if alt2 is not None:
+            dst2, rows2, start2 = alt2
+            return src2, dst2, rows2, int(start2)
     return None
 
 
@@ -370,7 +388,30 @@ def generate_filed_plans(
     considered_timespan: int = 24,
     resample_seed: int = 42,
 ) -> pd.DataFrame:
-    # Load inputs
+    """Route every flight over the navgraph, one AIRFRAME at a time.
+
+    The unit of work is the airframe, not the flight row, and that is the whole point.
+    Stage 01 hands over a rotation: leg k+1 of an airframe departs from the airport leg k
+    landed at, because an aircraft is only ever drawn from the pool standing at that
+    airport.  Routing flights independently -- which is what this stage used to do -- meant
+    that any leg which would not fit the 24 h window had its endpoints rewritten in
+    isolation: a different destination, or, worst of all, a different ORIGIN.  Either edit
+    leaves the airframe departing from an airport it never landed at.  On the published
+    TG=1 data that was 211 of 224 consecutive leg pairs in USA-MAINLAND.
+
+    So: walk each airframe's legs in departure order, carrying the airport it stands at.
+    Every leg departs from there, full stop.  A leg that will not fit ends the airframe's
+    day -- it and every later leg of that airframe are dropped, which is the only way to
+    shorten a chain without breaking it.
+
+    That leaves the instance short of the requested flight count, which is not negotiable,
+    so the dropped legs are then re-specified as REPLACEMENT legs: first by extending an
+    airframe from wherever it is parked, and only failing that by putting a single leg on a
+    brand-new airframe.  Both are continuous by construction.  The flight ids are the
+    dropped legs' own, so ``flights.csv`` keeps exactly the rows and the count it arrived
+    with.
+    """
+    requested = int(len(flights))
 
     # Build mapping ICAO -> vertex id (airports)
     missing_airports = []
@@ -394,17 +435,21 @@ def generate_filed_plans(
         flights["src"] = flights["origin"].map(_map_srcdst_string)
         flights["dst"] = flights["destination"].map(_map_srcdst_string)
 
-    # Drop flights with unknown endpoints
+    # A flight whose origin or destination is not a graph vertex is NOT dropped from the
+    # instance -- dropping it silently delivered fewer flights than the configuration asked
+    # for.  It is left unrouted here and re-specified by the top-up below, exactly like a
+    # leg that does not fit the window.
     bad_endpoints = flights["src"].isna() | flights["dst"].isna()
     if bad_endpoints.any():
         unknowns = sorted(set(missing_airports))
-        print(f"[WARN] {bad_endpoints.sum()} flights dropped due to unknown airport vertex "
-              f"(examples: {', '.join(unknowns[:10])}{' ...' if len(unknowns)>10 else ''})", file=sys.stderr)
-        flights = flights[~bad_endpoints].copy()
+        print(f"[WARN] {int(bad_endpoints.sum())} flights have an airport that is not a graph "
+              f"vertex (examples: {', '.join(unknowns[:10])}{' ...' if len(unknowns)>10 else ''}); "
+              f"each is re-drawn below so the requested flight count is still met",
+              file=sys.stderr)
 
     # Slotize departures
     flights["start_slot"] = flights["departure_time"].map(lambda t: _start_slot_from_timestamp(t, time_granularity))
-    
+
     print(flights["start_slot"])
 
     # Speed per flight
@@ -416,155 +461,219 @@ def generate_filed_plans(
     speed_values = flights["speed_kts"].unique().tolist()
     speed_graphs = _build_speed_graph_cache(G_base, speed_values, time_granularity)
 
-    # Iterate flights and produce (Flight_ID, Position, Time)
-    rows: List[Tuple[str,str,int]] = []
+    window = time_granularity * considered_timespan
+    rng = np.random.default_rng(resample_seed)
+
+    # ---- plain python views, so an airframe's legs can be walked by position ----------
+    def _vertex(x):
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return None
+        return int(x) if nodes_are_int else str(x)
+
+    n = len(flights)
+    fid_arr   = list(flights["flight_id"])
+    ac_arr    = [str(a) for a in flights["aircraft_id"]]
+    src_arr   = [_vertex(v) for v in flights["src"]]
+    dst_arr   = [_vertex(v) for v in flights["dst"]]
+    start_arr = [int(t) for t in flights["start_slot"]]
+    spd_arr   = [float(s) for s in flights["speed_kts"]]
+
+    airport_vs = {v for v in src_arr if v is not None} | {v for v in dst_arr if v is not None}
+    dest_weight: Dict[object, int] = defaultdict(int)
+    origin_weight: Dict[object, int] = defaultdict(int)
+    for v in dst_arr:
+        if v is not None:
+            dest_weight[v] += 1
+    for v in src_arr:
+        if v is not None:
+            origin_weight[v] += 1
+
+    # Airframes in order of first appearance -- stage 01 numbers them in that order, and it
+    # is stable without depending on how strings happen to hash.
+    frame_order: List[str] = []
+    legs_of: Dict[str, List[int]] = defaultdict(list)
+    for i in range(n):
+        if ac_arr[i] not in legs_of:
+            frame_order.append(ac_arr[i])
+        legs_of[ac_arr[i]].append(i)
+    for ac in frame_order:
+        legs_of[ac].sort(key=lambda i: (start_arr[i], str(fid_arr[i])))
+
+    rows: List[Tuple[str, str, int]] = []
+    routed = [False] * n
+    out_src, out_dst = list(src_arr), list(dst_arr)
+    out_ac, out_start = list(ac_arr), list(start_arr)
+
+    parked: Dict[str, Tuple[object, int | None]] = {}   # airframe -> (airport, last landing)
+    truncated_frames = 0
+    delayed = 0
+    forced_origin = 0
+
     use_bar = False
+    last_print = time.time()
     try:
         from tqdm import tqdm as _tq
-        it = _tq(flights.itertuples(index=False), total=len(flights), desc="Filed plans")
+        it = _tq(frame_order, total=len(frame_order), desc="Filed plans")
         use_bar = True
     except Exception:
-        it = flights.itertuples(index=False)
-        last_print = time.time()
+        it = frame_order
         print("Generating filed trajectories...")
 
-    missing_paths = 0
-    resampled = 0
-    unfittable = 0
-    replaced_origin = 0
-    window = time_granularity * considered_timespan
-    airport_vs = set(flights["src"].tolist()) | set(flights["dst"].tolist())
-    dest_weight = flights["dst"].value_counts().to_dict()
-    origin_weight = flights["src"].value_counts().to_dict()
-    rng = np.random.default_rng(resample_seed)
-    reassigned = {}   # flight_id -> new dst vertex, applied to flights.csv below
-    restarted = {}    # flight_id -> new start slot, for the late-departure fallback
-    reorigined = {}   # flight_id -> new src vertex, for the isolated-origin fallback
+    # ---- PASS 1: fly each rotation until a leg will not fit --------------------------
+    for ac in it:
+        idxs = legs_of[ac]
+        G_spd = speed_graphs[spd_arr[idxs[0]]]
+        at: object | None = src_arr[idxs[0]]
+        busy: int | None = None
+        cut: int | None = None
 
-    for rec in it:
-        # namedtuple fields from flights dataframe
-        # fields: flight_id, aircraft_id, origin, destination, departure_time, src, dst, start_slot, speed_kts
-        fid = rec.flight_id
-        src = rec.src
-        dst = rec.dst
+        for k, i in enumerate(idxs):
+            if at is None or dst_arr[i] is None or dst_arr[i] == at:
+                cut = k                      # unmapped airport, or a self-loop from here
+                break
+            start = start_arr[i] if busy is None else max(start_arr[i], busy + 1)
+            if start > window:
+                cut = k
+                break
+            try:
+                path = nx.shortest_path(G_spd, at, dst_arr[i], weight="weight")
+            except (nx.NetworkXNoPath, nx.NodeNotFound):
+                cut = k
+                break
+            leg_rows, end = _walk(G_spd, path, fid_arr[i], start, nodes_are_int, vid_to_ident)
+            if end > window:
+                cut = k                      # the rotation's day is over; truncate here
+                break
 
-        # normalize types for lookup
-        if nodes_are_int:
-            src = int(src); dst = int(dst)
+            rows += leg_rows
+            routed[i] = True
+            if at != src_arr[i]:
+                forced_origin += 1           # input disagreed about where the airframe was
+            out_src[i] = at
+            if start != start_arr[i]:
+                delayed += 1                 # held back to keep the one-timestep gap
+            out_start[i] = start
+            at, busy = dst_arr[i], end
 
-        spd = float(rec.speed_kts)
-        start = int(rec.start_slot)
-
-        G_spd = speed_graphs[spd]
-        try:
-            path = nx.shortest_path(G_spd, src, dst, weight="weight")
-            tmp_rows, max_t = _walk(G_spd, path, fid, start, nodes_are_int, vid_to_ident)
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            tmp_rows, max_t = None, None
-
-        if tmp_rows is None or max_t > window:
-            # Does not fit (or unreachable): drop this leg and resample a shorter one, keeping
-            # the flight itself so the requested count is met exactly. Three escalating
-            # fallbacks, each with a bounded candidate list -- none of them loops.
-            tmp_rows = None
-            alt = _resample_destination(G_spd, src, start, window, airport_vs, dest_weight, rng,
-                                        fid, nodes_are_int, vid_to_ident)
-            if alt is not None:
-                new_dst, tmp_rows = alt
-                reassigned[fid] = new_dst
-                resampled += 1
-            else:
-                # (2) Nothing fits from THIS departure slot: nearest airport, departing earlier.
-                alt2 = _nearest_fitting(G_spd, src, start, window, airport_vs, fid,
-                                        nodes_are_int, vid_to_ident)
-                if alt2 is not None:
-                    new_dst, tmp_rows, new_start = alt2
-                    reassigned[fid] = new_dst
-                    restarted[fid] = new_start
-                    unfittable += 1
-                else:
-                    # (3) The origin reaches no airport at all. Redraw the origin as well rather
-                    # than drop the flight, because the requested count must be met exactly.
-                    alt3 = _replace_origin(G_spd, start, window, airport_vs, origin_weight,
-                                           dest_weight, rng, fid, nodes_are_int, vid_to_ident)
-                    if alt3 is None:
-                        # Genuinely impossible on this graph. Fail loudly -- silently emitting
-                        # fewer flights than requested is exactly what must not happen.
-                        raise RuntimeError(
-                            f"flight {fid}: no origin/destination pair on this navgraph fits a "
-                            f"{window}-slot window; cannot honour the requested flight count. "
-                            f"Check navgraph connectivity (07_check_parsed_experiments_graph_"
-                            f"connectedness.py) or use a finer --time-granularity.")
-                    new_src, new_dst, tmp_rows = alt3
-                    reassigned[fid] = new_dst
-                    reorigined[fid] = new_src
-                    replaced_origin += 1
-
-        rows += tmp_rows
+        if at is not None:
+            parked[ac] = (at, busy)
+        if cut is not None:
+            truncated_frames += 1
 
         if (not use_bar) and (time.time() - last_print > 5):
             print(f"  processed {len(rows)} trajectory points so far...")
             last_print = time.time()
 
-    if reassigned or reorigined or restarted:
-        # Keep flights.csv consistent with the trajectories actually emitted. Every column that
-        # describes the leg has to move together: vertex id, ICAO string, and -- for a moved
-        # departure -- BOTH start_slot and departure_time. Updating start_slot alone leaves the
-        # two disagreeing, and any downstream step that re-derives the slot from the timestamp
-        # (stage 05, or a re-run of this stage) would silently undo the change.
-        ident = {}
-        if nodes_are_int and vid_to_ident is not None:
-            touched = set(reassigned.values()) | set(reorigined.values())
-            ident = {i: str(vid_to_ident[i]).strip().upper() for i in touched
-                     if 0 <= int(i) < len(vid_to_ident)}
+    # ---- PASS 2: top back up to the requested flight count ---------------------------
+    # Every leg pass 1 declined to fly is re-specified here.  It keeps its flight id and its
+    # sampled departure slot where that still works, and gets a route that both fits the
+    # window and continues a rotation.
+    orphans = [i for i in range(n) if not routed[i]]
+    extended = fresh = 0
+    fresh_count: Dict[str, int] = defaultdict(int)
+    # Which airframe a carrier's dropped legs should try to continue.  Once its own day is
+    # spent and a fresh airframe has been started for it, that fresh one is the live rotation
+    # and the next dropped leg continues THAT, instead of asking the exhausted original again
+    # and minting a second single-leg airframe for nothing.
+    frame_for: Dict[str, str] = {}
 
-        m = flights["flight_id"].map(reassigned)
-        hit = m.notna()
-        if hit.any():
-            flights.loc[hit, "dst"] = m[hit].values
-            flights.loc[hit, "destination"] = [ident.get(v, str(v)) for v in m[hit].values]
+    for i in orphans:
+        ac = ac_arr[i]
+        fid = fid_arr[i]
+        G_spd = speed_graphs[spd_arr[i]]
+        placed = False
 
-        mo = flights["flight_id"].map(reorigined)
-        ho = mo.notna()
-        if ho.any():
-            flights.loc[ho, "src"] = mo[ho].values
-            flights.loc[ho, "origin"] = [ident.get(v, str(v)) for v in mo[ho].values]
+        # (1) Extend the airframe this leg belongs to, from the airport it is parked at.
+        frame = frame_for.get(ac, ac)
+        if frame in parked:
+            at, busy = parked[frame]
+            start = start_arr[i] if busy is None else max(start_arr[i], busy + 1)
+            if start <= window:
+                alt = _resample_destination(G_spd, at, start, window, airport_vs,
+                                            dest_weight, rng, fid, nodes_are_int, vid_to_ident)
+                if alt is not None:
+                    dst2, leg_rows = alt
+                    rows += leg_rows
+                    out_ac[i] = frame
+                    out_src[i], out_dst[i], out_start[i] = at, dst2, start
+                    parked[frame] = (dst2, leg_rows[-1][2])
+                    routed[i] = True
+                    extended += 1
+                    placed = True
 
-        ms = flights["flight_id"].map(restarted)
-        hs = ms.notna()
-        if hs.any():
-            slot_s = _slot_seconds(time_granularity)
-            new_slots = ms[hs].astype(int)
-            flights.loc[hs, "start_slot"] = new_slots.values
-            base = flights.loc[hs, "departure_time"].dt.normalize()
-            flights.loc[hs, "departure_time"] = (
-                base + pd.to_timedelta(new_slots.values * slot_s, unit="s"))
+        # (2) Nothing left in this airframe's day: put the leg on a brand-new airframe,
+        #     which has no previous landing and so cannot break continuity.
+        if not placed:
+            alt = _fresh_leg(G_spd, start_arr[i], window, airport_vs, origin_weight,
+                             dest_weight, rng, fid, nodes_are_int, vid_to_ident)
+            if alt is None:
+                raise RuntimeError(
+                    f"flight {fid}: no origin/destination pair on this navgraph fits a "
+                    f"{window}-slot window, so the requested flight count cannot be honoured. "
+                    f"Check navgraph connectivity (07_check_parsed_experiments_graph_"
+                    f"connectedness.py) or use a finer --time-granularity.")
+            src2, dst2, leg_rows, start2 = alt
+            fresh_count[ac] += 1
+            new_ac = f"{ac}_R{fresh_count[ac]}"
+            aircraft_speed[new_ac] = spd_arr[i]
+            rows += leg_rows
+            out_ac[i], out_src[i], out_dst[i], out_start[i] = new_ac, src2, dst2, start2
+            parked[new_ac] = (dst2, leg_rows[-1][2])
+            frame_for[ac] = new_ac
+            routed[i] = True
+            fresh += 1
 
-        # a resampled leg must never become a self-loop
-        loops = int((flights["origin"].astype(str) == flights["destination"].astype(str)).sum())
-        if loops:
-            print(f"[WARN] {loops} flights became self-loops after resampling.", file=sys.stderr)
+    # ---- write the plan back onto flights.csv ----------------------------------------
+    # Every column describing a leg moves together: vertex id, ICAO string, airframe, and --
+    # for a leg that was held back or redrawn -- BOTH start_slot and departure_time.  Leaving
+    # start_slot and departure_time disagreeing means any downstream step that re-derives the
+    # slot from the timestamp (stage 05, or a re-run of this stage) silently undoes the change.
+    def _ident(v):
+        if v is None:
+            raise RuntimeError("a leg reached the write-back with no endpoint; every flight "
+                               "must have been either flown or re-specified above")
+        if nodes_are_int and vid_to_ident is not None and 0 <= int(v) < len(vid_to_ident):
+            return str(vid_to_ident[int(v)]).strip().upper()
+        return str(v)
 
-    if missing_paths:
-        print(f"[WARN] {missing_paths} flights had no reachable destination at all and were "
-              f"skipped -- the requested flight count is NOT met.", file=sys.stderr)
-    if replaced_origin:
-        print(f"[WARN] {replaced_origin} flights had an origin that reaches no airport at all; "
-              f"the origin was redrawn to preserve the requested flight count.", file=sys.stderr)
-    if resampled:
-        print(f"[INFO] {resampled} flights did not fit the "
-              f"{time_granularity*considered_timespan}-slot window; a shorter destination was "
-              f"resampled for each (flight count preserved).", file=sys.stderr)
-    if unfittable:
-        print(f"[WARN] {unfittable} flights departed too late for ANY route to complete; each "
-              f"was given its nearest airport and an earlier departure so the leg finishes "
-              f"in-window (their sampled departure time is not preserved).", file=sys.stderr)
+    flights["aircraft_id"] = out_ac
+    flights["src"] = out_src
+    flights["dst"] = out_dst
+    flights["origin"] = [_ident(v) for v in out_src]
+    flights["destination"] = [_ident(v) for v in out_dst]
+    # A leg whose slot did not move keeps its sampled timestamp to the second; only a leg that
+    # was held back or redrawn is re-stamped, from local midnight plus its new slot.
+    slot_s = _slot_seconds(time_granularity)
+    kept = np.asarray(out_start) == np.asarray(start_arr)
+    restamped = (flights["departure_time"].dt.normalize()
+                 + pd.to_timedelta(np.asarray(out_start, dtype=float) * slot_s, unit="s"))
+    flights["departure_time"] = flights["departure_time"].where(kept, restamped)
+    flights["start_slot"] = out_start
+
+    loops = int((flights["origin"].astype(str) == flights["destination"].astype(str)).sum())
+    if loops:
+        print(f"[WARN] {loops} flights are self-loops.", file=sys.stderr)
+
+    if truncated_frames:
+        print(f"[INFO] {truncated_frames} airframes had their day truncated: a leg would not "
+              f"have completed inside the {window}-slot window, so it and every later leg of "
+              f"that airframe were dropped rather than re-routed from somewhere the airframe "
+              f"was not.", file=sys.stderr)
+    if extended or fresh:
+        print(f"[INFO] {extended + fresh} dropped legs re-specified to hold the requested "
+              f"count at {requested}: {extended} continue a parked airframe, {fresh} start a "
+              f"new one.", file=sys.stderr)
+    if delayed:
+        print(f"[INFO] {delayed} legs departed later than sampled, to leave a whole timestep "
+              f"between them and the airframe's previous landing.", file=sys.stderr)
+    if forced_origin:
+        print(f"[WARN] {forced_origin} legs named an origin the airframe was not standing at; "
+              f"the airframe's actual position was used.", file=sys.stderr)
 
     out = pd.DataFrame(rows, columns=["Flight_ID","Position","Time"])
     out["Position"] = out["Position"].astype("string")
 
     return out, flights
-
 
 # -------------------------
 # CLI
@@ -592,8 +701,10 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
     This is the reference implementation of
     :class:`stage_interfaces.FiledFlightPlanStage`; that class's docstring is the
     contract — ``filed_flights.csv``, the 24-hour window, adjacency, airport
-    endpoints, and the whole-timestep separation between two legs of one
-    airframe.
+    endpoints, the whole-timestep separation between two legs of one airframe,
+    and the rotation itself: leg *k+1* departs from the airport leg *k* landed
+    at. ``generate_filed_plans`` above is where all five are established; what
+    follows here only verifies them.
 
     Note the stage is **not idempotent**: it rewrites ``flights.csv`` and
     ``aircrafts.csv`` in place, so a re-run must start from stage 01.
@@ -629,9 +740,13 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
 
         max_time = args.time_granularity * args.considered_timespan
 
-        new_aircrafts = []
-
-        # Handle potential overlapping flights:
+        # ---- SEQUENCING CHECK --------------------------------------------------------
+        # This was a repair: shift a clashing leg forward, and, when the shift pushed it past
+        # the window, move it onto a fresh copy of the aircraft.  generate_filed_plans now
+        # sequences an airframe's legs as it flies them, so a clash reaching here means that
+        # walk is broken.  Repairing it by copying the aircraft is one of the two places a
+        # rotation used to be severed -- the copy carries the tail of the chain away from the
+        # head, and the two no longer meet -- so this reports and fails instead.
         for aircraft in list(set(flights["aircraft_id"])):
             aircraft_flights = flights[flights["aircraft_id"] == aircraft]
             if aircraft_flights.shape[0] == 1:
@@ -640,11 +755,6 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
 
             print(aircraft)
 
-            new_aircraft_offset = 0
-
-            aircraft_copies = []
-            new_aircraft_flights = []
-        
             aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
             for index in range(1,aircraft_flights.shape[0]):
 
@@ -653,7 +763,7 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
 
                 prev_flight = df[df["Flight_ID"] == prev_flight_id]
                 cur_flight = df[df["Flight_ID"] == cur_flight_id]
-            
+
                 if len(prev_flight["Time"]) > 0:
                     prev_flight_max = max(prev_flight["Time"])
                 else:
@@ -665,78 +775,44 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
                     cur_flight_min = 1
 
                 if prev_flight_max >= cur_flight_min:
-                    diff_needed = (prev_flight_max - cur_flight_min) + 1
-                    indices_cur_flight = df.index[df["Flight_ID"] == cur_flight_id].tolist()
-                    df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] + diff_needed
+                    raise RuntimeError(
+                        f"aircraft {aircraft}: leg {cur_flight_id} departs at t="
+                        f"{cur_flight_min} but leg {prev_flight_id} lands at t="
+                        f"{prev_flight_max}. The airframe walk in generate_filed_plans is "
+                        f"supposed to make this impossible; do not ship the result.")
 
-                    if max(df.loc[indices_cur_flight,"Time"]) > max_time:
-
-                        new_aircraft_id = aircraft + f"_{str(new_aircraft_offset)}"
-
-                        # The forward shift above sequences this flight after the previous leg of
-                        # the same aircraft. If that pushes it past the window we give the flight a
-                        # fresh aircraft instead and undo the shift EXACTLY -- subtracting
-                        # max(over, diff_needed) as before could take the flight below its own
-                        # original departure slot and hence below t=0, violating the contract.
-                        df.loc[indices_cur_flight,"Time"] = df.loc[indices_cur_flight,"Time"] - diff_needed
-                    
-                        aircraft_copies.append((aircraft,new_aircraft_id))
-                        new_aircraft_flights.append((new_aircraft_id,cur_flight_id))
-
-                        new_aircraft_offset += 1
-
-            for new_aircraft_id, flight_id in new_aircraft_flights:
-                indices_flights = flights.index[flights["flight_id"]==flight_id]
-                flights.loc[indices_flights,"aircraft_id"] = new_aircraft_id
-
-            for aircraft,new_aircraft_id in aircraft_copies:
-                speed = aircraft_speed[aircraft]
-                aircraft_speed[new_aircraft_id] = speed
-   
-        # ---- AIRCRAFT-DISJOINTNESS REPAIR -------------------------------------
-        # One airplane cannot fly two legs at once. The sequencing loop above sorts a carrier's
-        # flights by `start_slot` but compares TRAJECTORY times, and the two diverge as soon as a
-        # leg is shifted (or resampled), so some overlaps survive it -- 45 per 1000 flights in the
-        # delivered DACH TG=4 instance, 10 after the window fix alone.
-        #
-        # Enforce the invariant directly instead of trying to make the ordering exact: walk each
-        # aircraft's legs in true trajectory order and move any leg that starts before the previous
-        # one ends onto a fresh copy of that aircraft. Splitting rather than shifting keeps every
-        # timestep inside the window, so this cannot reintroduce a contract violation.
+        # ---- AIRCRAFT-DISJOINTNESS CHECK ---------------------------------------------
+        # One airplane cannot fly two legs at once.  The loop above sorts a carrier's flights
+        # by `start_slot` but compares TRAJECTORY times, and the two diverge as soon as a leg
+        # is re-timed, so this second pass walks each aircraft's legs in true trajectory order.
+        # It used to move an overlapping leg onto a fresh copy of the aircraft: the other place
+        # a rotation was severed.  It now reports and fails.
         span = df.groupby("Flight_ID")["Time"].agg(["min", "max"])
         fid2ac = dict(zip(flights["flight_id"], flights["aircraft_id"]))
         by_ac = defaultdict(list)
         for fid, r in span.iterrows():
             by_ac[fid2ac.get(fid)].append((int(r["min"]), int(r["max"]), fid))
 
-        split = {}
-        extra_speed = {}
+        clashes = []
         for ac, legs in by_ac.items():
             if ac is None or len(legs) < 2:
                 continue
             legs.sort()
             busy_until = legs[0][1]
-            n_copy = 0
             for lo, hi, fid in legs[1:]:
-                # A leg must start at least one timestep AFTER the previous one ends: arrive at t=5,
-                # depart no earlier than t=6. Sharing the boundary slot would put the aircraft at two
-                # navpoints in the same timestep and count it twice in that slot's occupancy, so
-                # `lo == busy_until` is a violation, not a rounding artefact. This matches the
-                # sequencing loop in main(), which already treats `prev_max >= cur_min` as a clash.
-                if lo <= busy_until:                     # would overlap or touch -> own aircraft copy
-                    n_copy += 1
-                    new_ac = f"{ac}_D{n_copy}"
-                    split[fid] = new_ac
-                    extra_speed[new_ac] = aircraft_speed.get(str(ac), args.default_speed_kts)
-                else:
-                    busy_until = hi
-        if split:
-            flights["aircraft_id"] = flights.apply(
-                lambda r: split.get(r["flight_id"], r["aircraft_id"]), axis=1)
-            for k, v in extra_speed.items():
-                aircraft_speed[k] = v
-            print(f"[INFO] {len(split)} legs moved onto fresh aircraft copies so that no airplane "
-                  f"flies two legs simultaneously.", file=sys.stderr)
+                # A leg must start at least one timestep AFTER the previous one ends: arrive at
+                # t=5, depart no earlier than t=6.  Sharing the boundary slot would put the
+                # aircraft at two navpoints in the same timestep and count it twice in that
+                # slot's occupancy, so `lo == busy_until` is a violation, not a rounding
+                # artefact.
+                if lo <= busy_until:
+                    clashes.append((ac, fid, lo, busy_until))
+                busy_until = max(busy_until, hi)
+        if clashes:
+            raise RuntimeError(
+                f"{len(clashes)} legs are airborne while the same airframe already is, "
+                f"e.g. {clashes[:3]} as (airframe, flight, departs, busy until). "
+                f"Do not ship the result.")
 
         # ---- CONTRACT GUARD ---------------------------------------------------
         # The parsed instances the optimizers consume assume 0 <= t <= time_granularity * 24.
@@ -762,7 +838,33 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
                                f"in flights.csv")
         if not df.empty:
             assert df["Time"].min() >= 0 and df["Time"].max() <= max_time, "contract guard failed"
-        print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}].")
+
+        # ---- ROTATION-CONTINUITY GUARD -----------------------------------------------
+        # The property this stage exists to stop breaking: an airframe's next leg departs from
+        # the airport its previous leg landed at.  Checked on the trajectories actually about
+        # to be written, not on flights.csv, because the trajectories are what a solver reads
+        # and check_instances.py's D8/F10 is computed from exactly these two columns.
+        walk = df.sort_values(["Flight_ID", "Time"])
+        ends = walk.groupby("Flight_ID")["Position"].agg(["first", "last"])
+        ends = ends.join(walk.groupby("Flight_ID")["Time"].agg(["min", "max"]))
+        ends["ac"] = [fid2ac.get(f) for f in ends.index]
+        broken = []
+        for ac, grp in ends.groupby("ac"):
+            if len(grp) < 2:
+                continue
+            srt = grp.sort_values("min")
+            for arrive, depart in zip(srt["last"].values[:-1], srt["first"].values[1:]):
+                if arrive != depart:
+                    broken.append((ac, arrive, depart))
+        if broken:
+            raise RuntimeError(
+                f"{len(broken)} consecutive leg pairs depart from an airport the airframe "
+                f"never landed at, e.g. {broken[:3]} as (airframe, landed, departed). "
+                f"Do not ship the result.")
+        legs_per_frame = len(ends) / max(1, ends["ac"].nunique())
+        print(f"[OK] {n_traj} flights, timesteps within [0, {max_time}], "
+              f"{ends['ac'].nunique()} airframes ({legs_per_frame:.3f} legs each), "
+              f"rotation continuous.")
 
         # All three land together or none do.  run_pipeline's guard for this stage
         # checks only filed_flights.csv, while flights.csv and aircrafts.csv already

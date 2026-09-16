@@ -326,13 +326,22 @@ class FiledFlightPlanStage(GeneratorStage):
       they differ (checks ``D3``/``F7``, ``C4``).
     * **The 24-hour window is a hard contract** (README convention ③): every
       timestep lies in ``[0, --time-granularity × 24]``. The shipped stage
-      enforces it by resampling a nearer destination, and raises rather than
-      shipping a short instance (checks ``P3``/``F1``).
+      enforces it by ending an airframe's day at the first leg that will not
+      fit, and raises rather than shipping a short instance (checks
+      ``P3``/``F1``).
     * **Two legs of one airframe are separated by at least one whole timestep**
       — arrive at *t*, depart no earlier than *t+1*. Sharing the boundary slot
       puts the aircraft at two navpoints in one timestep (checks ``D4``/``F4``).
+    * **An airframe's next leg departs from the airport its previous leg landed
+      at.** Stage 01 hands over a rotation built that way and this stage must
+      hand it on intact: an airframe that lands at one airport and takes off
+      from another contradicts the model the benchmark encodes, whether or not a
+      given solver happens to look (checks ``D8``/``F10``). A leg may not be
+      repaired by rewriting one endpoint in isolation — that is precisely what
+      severs a rotation. Shorten the chain from a leg onwards instead, and make
+      the count up with legs that continue a rotation or start a new airframe.
     * The set of ``Flight_ID`` must equal the set in ``flights.csv``: the stage
-      may split an airframe's legs onto new aircraft ids, but it may not lose or
+      may move an airframe's legs onto new aircraft ids, but it may not lose or
       invent a flight.
 
     Note this stage is **not idempotent**: it rewrites its own input. A re-run
