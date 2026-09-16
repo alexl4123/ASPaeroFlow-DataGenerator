@@ -65,7 +65,8 @@ Everything is driven by a JSON config; the CLI only overrides.
 python run_pipeline.py --config default_configs_large_scaling_tg/04_0_dach_TG60.json
 python 05_transform_for_optimizer.py --in-exp-dir unparsed_experiment_data_.../<REGION> \
                                      --out-root experiment_data_...
-python 06_capacity_sweep.py --experiment experiment_data_.../<REGION> --overlay-root capacity_overlays_...
+python 06_capacity_sweep.py --exp-dir experiment_data_.../<REGION> \
+                            --time-granularity <TG> --out-root capacity_overlays_...
 ```
 
 ### Config families
