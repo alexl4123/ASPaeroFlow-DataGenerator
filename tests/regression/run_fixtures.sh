@@ -43,6 +43,7 @@ FIXTURES=(
   "majeur10x10|default_configs_small_scaling/30_4_major_europe_10x10.json|--flight-flights 10,50,100 --flight-seeds 42,13|grid navpoints, TG=1, largest small-scaling grid, stages 00-05"
   "ea3x3_tg4|default_configs_small_scaling/30_0_east_asia_3x3.json|--time-granularity 4 --flight-flights 50,100 --flight-seeds 42|same region at TG=4: exercises stage 04 timestep arithmetic that TG=1 does not"
   "dach_gabriel_tg15|default_configs_large_scaling_tg/04_0_dach_TG15.json|--navdir @NAVDIR@ --flight-flights 300 --flight-seeds 42|REAL X-Plane waypoints: BallTree neighbourhoods + Gabriel edge criterion, 1508 vertices, min-dist filter, TG=15, stages 00-05"
+  "dach_gabriel_tg1|default_configs_large_scaling_tg/04_0_dach_TG01.json|--navdir @NAVDIR@ --flight-flights 300 --flight-seeds 42|same region and graph at TG=1: routes eat the whole 24-slot window, so stage 04's window fallbacks fire on most legs -- the only fixture that exercises them"
 )
 
 usage() {

@@ -1,0 +1,501 @@
+{
+  "env": {
+    "PYTHONHASHSEED": "0",
+    "pandas": "3.0.5",
+    "python": "3.12"
+  },
+  "files": {
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airplane_flight_assignment.csv": {
+      "bytes": 2187,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "18bfeb603d6765e1209658c673833e3255c4fff867672e9b4a6a415e3efe56b8",
+        "Flight_ID": "9c25f87450fb5899c667c8f61f2daf0a6f053789c2bd5ff7fc9760b9bfd5bd7a"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Flight_ID"
+      ],
+      "kind": "csv",
+      "rows": 300,
+      "sample_rows": [
+        "0,0",
+        "1,1"
+      ],
+      "sha256": "5e15a6b876868005bd627e9409f841109b422b9c4c47bf712714d515595b5ea0",
+      "sha256_sorted": "706afcb7884be9d8309ce105d021b32b928396746061f09c30e98796147b13b1"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airplanes.csv": {
+      "bytes": 2742,
+      "cols": 2,
+      "column_sha256": {
+        "Airplane_ID": "4ecb78ac091d552cafcef830d404362d5bb49f5e20ca5a0607b50a94bcaabb61",
+        "Speed_kts": "deeb51bdd2a09dbf338808bd7ee4825003c1f686a085edefb1ab6d9d430c4dd6"
+      },
+      "columns": [
+        "Airplane_ID",
+        "Speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 283,
+      "sample_rows": [
+        "0,480.0",
+        "1,430.0"
+      ],
+      "sha256": "c5582712bc4ecd173f581370aeaa7b46d7b94fd7af897b67848e62f017fb84d5",
+      "sha256_sorted": "a79a43861891e62cf40fd7c41bebbe221eba28b4dbe9dfe47d25c47578eed46a"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airports.csv": {
+      "bytes": 496,
+      "cols": 1,
+      "column_sha256": {
+        "Airport_Vertex": "123461c02ac130d092e79ee3cb91e09c2a187025af3e3362b8a4afed399404da"
+      },
+      "columns": [
+        "Airport_Vertex"
+      ],
+      "kind": "csv",
+      "rows": 128,
+      "sample_rows": [
+        "0",
+        "5"
+      ],
+      "sha256": "48e9017d0fcb5d283bcd8caca14055d913f6a2ed97cb3a0cb0870c20608febe2",
+      "sha256_sorted": "a02a053ac37afc646bb16e2c8555b64c5049328260f8cc5c024263c67cadccd0"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/flights.csv": {
+      "bytes": 33032,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "66f224d0bda5554935bfc2cdc798f12dcf1a4173f9d48bef5262cd185f9606ad",
+        "Position": "3c1851225aeb482b8295784e1467441666d840d33a9d91a27f35e8261266e3b9",
+        "Time": "31440492f42fa683ec57949379186a53148741d1408c1289eaf0c65a75058197"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 3216,
+      "sample_rows": [
+        "0,65,1",
+        "0,66,2"
+      ],
+      "sha256": "f69d61b9e5bc6eee8d287b603814900add68a248d9d75e2c6373dd4db98faaab",
+      "sha256_sorted": "344c44a3915998a93b37f8a05d4e0c427b43437ceacb3bd1a85955752d57a084"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/graph_edges.csv": {
+      "bytes": 63321,
+      "cols": 3,
+      "column_sha256": {
+        "dist_m": "32ac88366de7af8f3e2fd025a578a9444a2ed1d525c221195949abd947161fdc",
+        "source": "e785694973897ea74fc4bf94ece91b1dfa50b242ec00ec4704a9ba75c01a4c5d",
+        "target": "754be48cd56fa71ed8469ab080babe5aa963238e14246d400a7279d63325c726"
+      },
+      "columns": [
+        "source",
+        "target",
+        "dist_m"
+      ],
+      "kind": "csv",
+      "rows": 3442,
+      "sample_rows": [
+        "0,1,13965.429",
+        "0,2,14963.119"
+      ],
+      "sha256": "3d3b40a607acd3ee35311ad9c84fa0f0ed674b2e600145b4fe0e02ee1434f004",
+      "sha256_sorted": "68e6a6d9eb2cc622be20afab606f944fe000317634c9177fd515d90e6cadb279"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/mappings/id_maps.json": {
+      "bytes": 28364,
+      "kind": "json",
+      "sha256": "65aed9b3968338810c4c8a0ae8e6e597e65fec70f9d7c02070faeac290c37552"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/mappings/vertex_map.csv": {
+      "bytes": 23772,
+      "cols": 2,
+      "column_sha256": {
+        "IDENTIFIER": "36485b0d54978bbda660cf19c4962dabf2c80fa1ce922c0bfe8ed0e5752ec68d",
+        "VERTEX_ID": "c0f1a47519608eda81dbbbb120e33f8ee4a758a3a1810687d8de694dbe823a03"
+      },
+      "columns": [
+        "IDENTIFIER",
+        "VERTEX_ID"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "EDDT,0",
+        "VADUX_FL300,1"
+      ],
+      "sha256": "2502e75159c36b7bb9d78e7b3bf5e1c96749041d13c0eee2c9df71bbf95133ff",
+      "sha256_sorted": "1a488902ebbaa694956f911fb183f3c6e39376badb9f3bfff760c5eb0ed42995"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/navaid_sector_assignment.csv": {
+      "bytes": 12347,
+      "cols": 2,
+      "column_sha256": {
+        "Navaid_ID": "31cc4c1c02514d03cd6c16cd5baed1decd5d20006d9b4ff55150887889b43ee2",
+        "Sector_ID": "fd70104aa0f893bc1f7ad3aec5e48624202672f7b419c380aed976061e8eaf73"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "0,0",
+        "1,964"
+      ],
+      "sha256": "83b00cb0f2ec30a2740d94c7d620be6cfdc746e3a68078e8b2e3e8963be40a2a",
+      "sha256_sorted": "f76ee3c81187b2c646cf102617205383578f0a8bb6ea1d923ffcd2c1e42024c0"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/sectors.csv": {
+      "bytes": 14117,
+      "cols": 2,
+      "column_sha256": {
+        "Capacity": "8ca7f25a99980e715b3bcf4ae6592b64cda3064688ac10c285645e064205ed83",
+        "Sector_ID": "31cc4c1c02514d03cd6c16cd5baed1decd5d20006d9b4ff55150887889b43ee2"
+      },
+      "columns": [
+        "Sector_ID",
+        "Capacity"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "0,60000",
+        "1,1200"
+      ],
+      "sha256": "69b335002c6e8c460ca3f8b23883fdac50747a3bbfc48bd6ae2f8305d182638e",
+      "sha256_sorted": "241b6f3e36da8b70288c364c0408787aab8df7175f42b20c0aa876a5df428f57"
+    },
+    "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/transform_manifest.json": {
+      "bytes": 468,
+      "kind": "json",
+      "sha256": "bebb11ae37f69d3b56c3ef60d94cf21dff5ea0137c747d1aaccbffa6504aa0c0"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/aircrafts.csv": {
+      "bytes": 4610,
+      "cols": 2,
+      "column_sha256": {
+        "aircraft_id": "5a46b2c4b7628d41d7edf5c3ee4283f46ae0fc34abf5eff8cb2255082ed85a02",
+        "speed_kts": "cff51d74afb5fb6690d75d2414a069f53e60b709cd6a767c6953a233003e8e90"
+      },
+      "columns": [
+        "aircraft_id",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 283,
+      "sample_rows": [
+        "AC000001,480.0",
+        "AC000002,430.0"
+      ],
+      "sha256": "aa5e155f4a96cd015db0f1b13531f284df0f77819c7c9c108806ad07a799708b",
+      "sha256_sorted": "2e0c0532208d42e422298f070f0a8623806ab62e16f360ac153685e47feb3fbf"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/filed_flights.csv": {
+      "bytes": 71056,
+      "cols": 3,
+      "column_sha256": {
+        "Flight_ID": "8931af6266318ae3764f7b9dbed4b000bce4572f4e3af753cfabdeb91f71f7bc",
+        "Position": "307036c88cd9295f0a92aa784a267cb91f3ed026125e99b57533c096cf07edfd",
+        "Time": "9800bfb396cd32b866c3f572100bfe3076241a0806e34e8c4ac6be0fc283c2ea"
+      },
+      "columns": [
+        "Flight_ID",
+        "Position",
+        "Time"
+      ],
+      "kind": "csv",
+      "rows": 3216,
+      "sample_rows": [
+        "F0000001,EDDK,1",
+        "F0000001,BIBOS_FL300,2"
+      ],
+      "sha256": "94a962f37468e0b01f00f5e55c0abb8e2eb35b0360849e603105e9ca525125ba",
+      "sha256_sorted": "feea5d031f328e6e381162040a5cfee6f073ef05e97514a034e815b8877bdcf2"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/flights.csv": {
+      "bytes": 23292,
+      "cols": 10,
+      "column_sha256": {
+        "_lineno": "096b0792be79053300b69433a7ba09a6027044a8b125aa067ccf4446660a889d",
+        "aircraft_id": "d80afe4787bcff4e0379c6ed51bc9e089f4d2696fd964549e156661d4286fdcc",
+        "departure_time": "1fad929307287894456415ea74a037922f2014c003b6e5ee6d1ea37e11036038",
+        "destination": "885db3fea0538bd7ff5930091011fc60cf8ebf94dcd838a10dbb75a64efac73c",
+        "dst": "885db3fea0538bd7ff5930091011fc60cf8ebf94dcd838a10dbb75a64efac73c",
+        "flight_id": "2402c548a4b7ed81066edf9ac724c0e596ed4040b48b16046a534103c8ed9c44",
+        "origin": "7630c79e6c9928f5685772721dd69763df6576e19cecd1863cf54feadebca53d",
+        "speed_kts": "12dced8e6a550cf96044976a5063a8d7d70e201095fde1e103f76dfc2d59e581",
+        "src": "7630c79e6c9928f5685772721dd69763df6576e19cecd1863cf54feadebca53d",
+        "start_slot": "1571a95ec50f09e12e1d7a7e0fcf0c170286e27081d7fb80c9523a3b78ddb5ff"
+      },
+      "columns": [
+        "flight_id",
+        "aircraft_id",
+        "origin",
+        "destination",
+        "departure_time",
+        "_lineno",
+        "src",
+        "dst",
+        "start_slot",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 300,
+      "sample_rows": [
+        "F0000001,AC000001,EDDK,EDDH,2019-06-01 01:05:08-01:00,2,EDDK,EDDH,1,480.0",
+        "F0000002,AC000002,EBLG,EDGE,2019-06-01 01:19:41-01:00,3,EBLG,EDGE,1,430.0"
+      ],
+      "sha256": "bb08c265ee0334f6c4316f24afa75f1067e1810884484e596889d9b9c13b81fa",
+      "sha256_sorted": "24b3cb77588968ffe0737936d4feb27de8c74227b9513d7f433d1ac54b36113e"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/run_config.json": {
+      "bytes": 289,
+      "kind": "json",
+      "sha256": "8c78f6b5e75fea096fc44fd8a6d0af71a257b2cb75ba935bf98012f7db0f6ca6"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/manifest.json": {
+      "bytes": 1230,
+      "kind": "json",
+      "sha256": "5767d05ef0e1251ceac7ec22e4d4c6006aff0568d755b9a1ba835a90deeb3dbb"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/airport_bins.csv": {
+      "bytes": 164011,
+      "cols": 3,
+      "column_sha256": {
+        "bin": "15d216b1246c60899b38221df73e6b33fa515b5e93fc2f42add5a750e6f5942a",
+        "origin": "1917515d6ba5dd572e8aa09dc416450c8b4851375a54a74c4a131ad54cbc4ef4",
+        "rate": "b6d8fb1908976e66a4769e633a8d189d9ea01085aa3f64f15269a394c9e28110"
+      },
+      "columns": [
+        "origin",
+        "bin",
+        "rate"
+      ],
+      "kind": "csv",
+      "rows": 10560,
+      "sample_rows": [
+        "EBLG,0,0.0",
+        "EBLG,1,0.0"
+      ],
+      "sha256": "a9414af176b4606ead4f7c28130d1dac41352cec64bc93ac6b5a94e1c0b3f479",
+      "sha256_sorted": "128e902420b790fd16a0fc93d0de4cca23288a6d411171555df9308e7bc7128c"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/global_dest_freq.csv": {
+      "bytes": 3177,
+      "cols": 2,
+      "column_sha256": {
+        "destination": "ef0fafbe193ad18a6f0b67124556f0588efb359caf9e1db933a57cdbba731b7c",
+        "freq": "f601caca21987ed679c77fa1de7a0592850fce7598f34fd4b1d04a5cff87d45e"
+      },
+      "columns": [
+        "destination",
+        "freq"
+      ],
+      "kind": "csv",
+      "rows": 118,
+      "sample_rows": [
+        "EBLG,0.003297713796493008",
+        "EDAC,3.170878650474046e-05"
+      ],
+      "sha256": "f42f75848f9e7bba8ae5cfb1423112adaa7866b4b325f98d1de074801f224d1e",
+      "sha256_sorted": "1dd1fd9df98b0470214a3ca5bac216d7866a80ec1ce1711bde165999ee7bc859"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/metadata.csv": {
+      "bytes": 54,
+      "cols": 2,
+      "column_sha256": {
+        "artifact": "16c665eba5bbf421bdf13d0cb0eae1e9ff8b1eee497acd97860cb4f0683e33fe",
+        "bin_minutes": "c5fb24bcbbc9ab48a55e66bf544f9c58bbdecdcacc870ae129a9db408f90dd8f"
+      },
+      "columns": [
+        "artifact",
+        "bin_minutes"
+      ],
+      "kind": "csv",
+      "rows": 2,
+      "sample_rows": [
+        "airport_bins,15",
+        "od_time_model,15"
+      ],
+      "sha256": "fc7c1e3bef5939bb37e7e47c4394dd65fc26d2ec95117aa90a392590a73289b2",
+      "sha256_sorted": "34ebc4e3803642a0177ce9bdf4a572659b89cbf77fea119a7d3647ae72cc2619"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/od_dur_dist.csv": {
+      "bytes": 886073,
+      "cols": 4,
+      "column_sha256": {
+        "destination": "b1c93466223fe1d770ef973c476fcd204f27356cc738bb838ab06541a1b43517",
+        "duration_min": "78dec413b3bef73f0823ff24121dc96d8d7054b71f9b1c00648a87e16b69cf2c",
+        "origin": "e9bbb41b27fa713e4952840fe0f2ba0415694a71335f86763189dcda51c8ab52",
+        "speed_kts": "72dbbb526163b7114449a3ddd320367d8066ed3ee81722e3b9c2bc82b697b849"
+      },
+      "columns": [
+        "origin",
+        "destination",
+        "duration_min",
+        "speed_kts"
+      ],
+      "kind": "csv",
+      "rows": 31537,
+      "sample_rows": [
+        "EBLG,EDDB,50.7,450",
+        "EBLG,EDDB,55.85,450"
+      ],
+      "sha256": "1113cdba75df5abb0a3cce907e1c4f7101b28d63f0390e654d10db7dc2eac424",
+      "sha256_sorted": "502e9053d8f26f64499aa8cc877c2de5ffe1f07ebf24fffa555a0b11f6cf0488"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/od_time_model.csv": {
+      "bytes": 253246,
+      "cols": 4,
+      "column_sha256": {
+        "bin": "309f54316bb7a2bdc3fb513f33824fd3fce8407fc8340dfb88ec44ec37b15a86",
+        "destination": "5a3534e5cecfbacfec6cc963d25f31b9be427ebb72ec888dd59944cf14f64c04",
+        "origin": "9c71017ecdc552ca475cea2623729986dcbefdd903ba98f7ccb99a4a4e47e12e",
+        "prob": "7e282ef06837023a7c9e93f60806d2ef04bf4c058a2cf30338c7c571d12dd352"
+      },
+      "columns": [
+        "origin",
+        "bin",
+        "destination",
+        "prob"
+      ],
+      "kind": "csv",
+      "rows": 9200,
+      "sample_rows": [
+        "EBLG,3,EDDM,1.0",
+        "EBLG,4,EDDM,1.0"
+      ],
+      "sha256": "85470738e1840e038a27b899b1eecaf79609dbfeb6dd3617ba9f955644c42d56",
+      "sha256_sorted": "4150f0d949a7504cbfd2f2fc694ffb640bd629b3a82bce63ba1b705657ff82c8"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/run_config.json": {
+      "bytes": 1314,
+      "kind": "json",
+      "sha256": "44fbeca34b13aeb4e6ed8e13a008a639ef4269628d8d42e98ea265094c42128e"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/model/tat_dist.csv": {
+      "bytes": 85886,
+      "cols": 1,
+      "column_sha256": {
+        "tat_min": "a9dbf774a35258baaf8c388b251f88f7ea9ea8fdbe060de39bce9580b3e704d8"
+      },
+      "columns": [
+        "tat_min"
+      ],
+      "kind": "csv",
+      "rows": 6080,
+      "sample_rows": [
+        "38.18333333333333",
+        "59.38333333333333"
+      ],
+      "sha256": "0759d79318cad3915f19382ba861cea140e7ecc5568613348c592e0e84de54b6",
+      "sha256_sorted": "f48652145b53f4c814b8ec43499ba389384ab929502e01eeacd57feffb734cb5"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/navgraph/edges.csv": {
+      "bytes": 113453,
+      "cols": 3,
+      "column_sha256": {
+        "D": "5132237abf62177b5d327273bfad16c862c46cc00012061514861e3910032a90",
+        "V0": "3c693dd964cbbbf00c9add0df32cd50cddbb430ac33f3edbf2f60c784592197a",
+        "V1": "de06687d099e824e1748b01310f26edc510be289d53632a707bb81ef3f52f260"
+      },
+      "columns": [
+        "V0",
+        "V1",
+        "D"
+      ],
+      "kind": "csv",
+      "rows": 3442,
+      "sample_rows": [
+        "EDDT,VADUX_FL300,13965.429",
+        "EDDT,R1288_FL300,14963.119"
+      ],
+      "sha256": "9ef38c18e295c12bc9ce8e7ce59e51c503436e0f85d4d3531d452b5de446de4e",
+      "sha256_sorted": "46cef99a42317a22c5570a8e1c5ea8f8144e5635eefb2f49817c74904d25c1aa"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/navgraph/navaid_sector_assignment.csv": {
+      "bytes": 39221,
+      "cols": 2,
+      "column_sha256": {
+        "Navaid_ID": "36485b0d54978bbda660cf19c4962dabf2c80fa1ce922c0bfe8ed0e5752ec68d",
+        "Sector_ID": "af056edcf8f89610ef03b45e1347374813803467c4afbc112e3ffb79bd772c94"
+      },
+      "columns": [
+        "Navaid_ID",
+        "Sector_ID"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "EDDT,SECTOR_AIRPORT_EDDT",
+        "EBBL,SECTOR_AIRPORT_EBBL"
+      ],
+      "sha256": "07bacdbf2a0872b868daedc79e962a29bc99a37d34cef02846bde84e14aa3193",
+      "sha256_sorted": "efaf8420d79e40b8ac2c479e2878eaf850cb3dcde4d3d8dd7083268b0fda5627"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/navgraph/run_config.json": {
+      "bytes": 1118,
+      "kind": "json",
+      "sha256": "0d38fdac225961bd9719fc1116ff5f0c042848b089ecc82dae04ef295ac2af43"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/navgraph/sectors.csv": {
+      "bytes": 25008,
+      "cols": 2,
+      "column_sha256": {
+        "Capacity": "ad7351105ecca5e3ede8c5acd88728976258b62716191c361a6542036d32e761",
+        "Sector_ID": "36485b0d54978bbda660cf19c4962dabf2c80fa1ce922c0bfe8ed0e5752ec68d"
+      },
+      "columns": [
+        "Sector_ID",
+        "Capacity"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "EDDT,60000",
+        "EBBL,60000"
+      ],
+      "sha256": "195be480caf5585c0e1bad852b8e5647a63a8cb7ea686e01d5f2754546a515ee",
+      "sha256_sorted": "fb92fe6bddc504a25336e32a5aebd54c0f6241e656eec73dc7c44c07fcf2485c"
+    },
+    "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/navgraph/vertices.csv": {
+      "bytes": 59012,
+      "cols": 5,
+      "column_sha256": {
+        "ALTITUDE": "de404967fe654b2e17257a2d1ec2fff7da43e721c705cad16717262c5ead575a",
+        "IDENTIFIER": "36485b0d54978bbda660cf19c4962dabf2c80fa1ce922c0bfe8ed0e5752ec68d",
+        "IS_AIRPORT": "fbca329bdc4c6caae8936c712bc01958765a937ea73ce9e72ceed1350aae0592",
+        "LAT": "4c4335a30da22cc0d53442380076d59a01e06595eea93cb02f129ed9d8e7f4d7",
+        "LON": "7100d58bbe033baa150e1b2770af994d86b2d14610765d4841d26c7eb579f531"
+      },
+      "columns": [
+        "IDENTIFIER",
+        "LAT",
+        "LON",
+        "ALTITUDE",
+        "IS_AIRPORT"
+      ],
+      "kind": "csv",
+      "rows": 1508,
+      "sample_rows": [
+        "EDDT,52.557675,13.29185,0.0,1",
+        "EBBL,51.168301,5.47,0.0,1"
+      ],
+      "sha256": "b22a8cbd79b8d4350d1bf7e70cc29712ebf230b6a193a531c87052fbb443477e",
+      "sha256_sorted": "22dc7886212c3d56e8edb1d3753c300b7ef54e3ca7282b57c10fc20b6a3e5ec1"
+    }
+  },
+  "label": "dach_gabriel_tg1",
+  "manifest_version": 1,
+  "normalisation": [
+    "json:absolute-path-values -> '<ABS>/<basename>' (out-root, csv-path and per-dataset directories are run-location, not generator output)",
+    "all files: CRLF/CR line endings -> LF"
+  ]
+}

@@ -147,13 +147,25 @@ for this config. Takes ~47 s.
 | `majeur10x10` | grid navpoints, TG=1, largest small-scaling grid | 25 s |
 | `ea3x3_tg4` | same region at **TG=4** — stage 04 timestep arithmetic TG=1 does not reach | 21 s |
 | `dach_gabriel_tg15` | **real X-Plane waypoints**: `BallTree` neighbourhoods, Gabriel edge criterion, `min-dist-vertices-km`, 1508 vertices / 3442 edges, `convex-sectors=0`, `airport-types`, **TG=15** | 170 s |
+| `dach_gabriel_tg1` | the **same region and the same graph at TG=1**, where one route eats most of the 24-slot window. The only fixture on which stage 04's window fallbacks fire in bulk, and the only one that contains **broken rotations** | 166 s |
 
-Full suite: **~5 min 15 s**, 553 files fingerprinted; **~6 min 20 s** with
+Full suite: **~8 min**, 580 files fingerprinted; **~9 min** with
 `--shipped-check`. Every fixture runs all six stages plus
 `05_transform_for_optimizer.py`; nothing is stubbed and no stage is skipped.
 
 For a quick check during a refactor, `--only ea3x3` (25 s) exercises stages 00–05 on the
-grid path; add `--only dach_gabriel_tg15` (~3 min) before touching graph generation.
+grid path; add `--only dach_gabriel_tg15` (~3 min) before touching graph generation, and
+`--only dach_gabriel_tg1` (~3 min) before touching stage 04's window handling.
+
+### Why the TG=1 twin exists
+
+On rotation continuity the other seven fixtures say nothing: they sit at or near 100%
+continuous, so a change that destroyed the property and a change that claimed to restore
+it would look the same on every one of them. `dach_gabriel_tg1` is the fixture with the
+property to lose. Measured when it was added, on `ed42d99` and before any fix, it held
+**13 of 17 consecutive leg pairs broken** at 1.060 legs per airframe.
+
+A fixture that has never failed is not known to work. This one began by failing.
 
 Each fixture is regenerated into a freshly deleted directory. This is required, not
 merely tidy: stage 04 rewrites `flights.csv` in place and is **not idempotent**, so
@@ -178,7 +190,8 @@ Be explicit about these before relying on a green run:
 * **`--criterion rng`.** Both graph fixtures use `gabriel`.
 * **`--neighbor-index bruteforce`** and **`--connectivity-method mst|greedy`**. All
   fixtures use `balltree` and `closest`.
-* **TG=60**, and large regions (EUROPE, USA-MAINLAND at 19,610 vertices). Cost.
+* **TG=60**, and large regions (EUROPE, USA-MAINLAND at 19,610 vertices). Cost. TG=1,
+  TG=4 and TG=15 are all covered, TG=1 and TG=15 on the same Gabriel region.
 * **`--target-day` legacy single-day mode**; all fixtures use `--date-start/--date-end`.
 * Numerical agreement across **different library versions**. The baseline was taken with
   Python 3.12.3, pandas 3.0.5, numpy 2.5.2, scikit-learn 1.9.0, networkx 3.6.1.
