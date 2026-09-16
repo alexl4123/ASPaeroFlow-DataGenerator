@@ -1268,7 +1268,7 @@ def ensure_connected(latlonalt: np.ndarray,
                     tmp_dm_min = dm
                     tmp_ia_min = ia
                     tmp_ib_min = ib
-                elif tmp_ib_min > dm:
+                elif tmp_dm_min > dm:
                     tmp_dm_min = dm
                     tmp_ia_min = ia
                     tmp_ib_min = ib
