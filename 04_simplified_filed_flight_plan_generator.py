@@ -450,7 +450,6 @@ def generate_filed_plans(
     # Slotize departures
     flights["start_slot"] = flights["departure_time"].map(lambda t: _start_slot_from_timestamp(t, time_granularity))
 
-    print(flights["start_slot"])
 
     # Speed per flight
     def _speed_for(acid: str) -> float:
@@ -753,7 +752,6 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
                 # If only 1 flight, then there cannot be an issue of overlapping flights
                 continue
 
-            print(aircraft)
 
             aircraft_flights = aircraft_flights.sort_values(by=["start_slot"], ascending=True)
             for index in range(1,aircraft_flights.shape[0]):
