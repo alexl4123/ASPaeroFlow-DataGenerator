@@ -46,6 +46,9 @@ What is checked (a violation fails the run)
   C4        no flight starts and ends at the same airport (self-loop)
   D4/F4     two legs of one airframe are separated by >= 1 timestep -- an
             airframe is never airborne twice at once
+  D8/F10    rotation continuity: an airframe's next leg departs from the airport
+            its previous leg landed at. An airframe cannot teleport between legs
+            any more than a flight can teleport between waypoints
   P9        transform_manifest.json agrees with the directory name
 
 What is reported but never fails
@@ -59,6 +62,9 @@ What is reported but never fails
             so a zero here is a hint the instance is trivial, not an error. It is
             also exactly what a PCAP100 overlay is supposed to show: nominal
             capacity is by definition the smallest capacity with no overload
+  D8-legs   mean legs per airframe. It falls as TG coarsens, because one route
+            eats most of a 24 h window and the rotation has nowhere to continue;
+            that is a property of the instance family, not a defect
 
 What is deliberately NOT checked here
 -------------------------------------
@@ -262,6 +268,26 @@ def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int
               overlap + boundary == 0,
               f"{overlap} overlapping, {boundary} sharing the boundary timestep")
 
+    # Rotation continuity. The airframe that lands at an airport is the airframe that
+    # departs from it: leg k+1 must start where leg k finished. Stage 01 builds the
+    # rotation that way (an aircraft is only drawn from the pool held at its current
+    # airport); nothing downstream may contradict it. The span above gives the order,
+    # `endpoints` the two airports, so this costs one join and one comparison.
+    joined_p = joined.join(endpoints)
+    broken = pairs = 0
+    for _, grp in joined_p.groupby("Airplane_ID"):
+        s = grp.sort_values("min")
+        if len(s) < 2:
+            continue
+        arrive, depart = s["last"].values[:-1], s["first"].values[1:]
+        pairs += len(depart)
+        broken += int((arrive != depart).sum())
+    rep.note("legs", ctx, len(joined_p) / max(1, joined_p["Airplane_ID"].nunique()))
+    rep.check(ctx, "D8/F10 each leg departs where the airframe last landed",
+              broken == 0,
+              f"{broken} of {pairs} consecutive leg pairs start at a different airport "
+              f"from the one the airframe landed at")
+
     # --- demand-capacity imbalance (informational) -----------------------
     sector_of = dict(zip(sec["Navaid_ID"], sec["Sector_ID"]))
     occ: dict[tuple[object, int], int] = defaultdict(int)
@@ -383,6 +409,7 @@ def main() -> int:
 
     clamp = [v for k, _c, v in rep.notes if k == "clamp"]
     imbal = [v for k, _c, v in rep.notes if k == "imbalance"]
+    legs = [v for k, _c, v in rep.notes if k == "legs"]
     print("--- reported, not failed -------------------------------------------")
     if clamp:
         print(f"  P3-clamp  flights ending on the window edge: mean {sum(clamp)/len(clamp):.1%} "
@@ -395,6 +422,9 @@ def main() -> int:
                   "these are")
             print("            PCAP100 overlays, where zero overload is the definition of "
                   "nominal capacity")
+    if legs:
+        print(f"  D8-legs   legs per airframe:                   mean {sum(legs)/len(legs):.3f} "
+              f"[{min(legs):.3f}-{max(legs):.3f}]")
     print()
 
     if rep.violations:
