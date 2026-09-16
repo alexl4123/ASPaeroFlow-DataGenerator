@@ -6,6 +6,7 @@ Input experiment folder layout (produced by run_pipeline.py):
   <exp_in>/
     model/
     navgraph/                 # requires: vertices.csv, edges.csv, sectors.csv, (airports.csv?), navaid_sector_assignment.csv
+                              # optional: navaid_sector_schedule.csv (derived at From_Time=0 if absent)
     DATA_S<scale>_<seed>/     # one or many
       flights.csv             # (flight_id, aircraft_id, origin, destination, departure_time)
       filed_flights.csv       # (Flight_ID, Position, Time)  -- Position may be IDENTIFIER or vertex id
@@ -19,6 +20,7 @@ Output (per data sample), into: <out_root>/<experiment_name>/<NNNNNNN_SEEDxx>/ :
   flights.csv                     (Flight_ID,Position,Time)
   graph_edges.csv                 (source,target,dist_m)
   navaid_sector_assignment.csv    (Navaid_ID,Sector_ID)
+  navaid_sector_schedule.csv      (Navaid_ID,Sector_ID,From_Time)
   sectors.csv                     (Sector_ID,Capacity)
 
 Also writes mapping files to <NNNNNNN_SEEDxx>/mappings/ :
@@ -49,6 +51,16 @@ from stage_interfaces import TransformStage
 import pandas as pd
 import numpy as np
 import sys
+
+#: The sector allocation with an explicit time axis, as stage 03 writes it: sparse
+#: change-points ``Navaid_ID,Sector_ID,From_Time``, a row meaning "from this timestep on,
+#: until the next row for this navaid". Stage 03's own SCHEDULE_FILENAME has the rationale.
+SCHEDULE_FILENAME = "navaid_sector_schedule.csv"
+SCHEDULE_COLUMNS = ["Navaid_ID", "Sector_ID", "From_Time"]
+
+#: Where a static allocation starts. An experiment written before stage 03 emitted the
+#: schedule gets one change-point per navaid here, derived from the static file.
+SCHEDULE_START_TIME = 0
 
 # --------------- helpers ---------------
 
@@ -107,6 +119,63 @@ def _first_appearance_index(values: pd.Series) -> Dict[str,int]:
             mapping[v] = nxt
             nxt += 1
     return mapping
+
+def _rekey_schedule(nav_dir: Path, nsdf: pd.DataFrame,
+                    ident_to_vid: Dict[str, int],
+                    sector_name_to_int: Dict[str, int]) -> pd.DataFrame:
+    """The sector schedule in solver ids: ``Navaid_ID, Sector_ID, From_Time``.
+
+    ``nsdf`` is the static allocation ALREADY re-keyed, and ``sector_name_to_int`` the
+    mapping that re-keyed it. The schedule reuses that mapping, so a sector has the same
+    integer in both files and the schedule's ``From_Time == 0`` slice is ``nsdf``.
+
+    When stage 03 wrote no schedule -- an experiment generated before it did -- the
+    static allocation is the whole schedule, one change-point per navaid at t=0.
+    """
+    path = nav_dir / SCHEDULE_FILENAME
+    if not path.exists():
+        print(f"[i] {SCHEDULE_FILENAME} not in {nav_dir}; deriving it from "
+              f"navaid_sector_assignment.csv at From_Time={SCHEDULE_START_TIME}")
+        sched = nsdf.assign(From_Time=SCHEDULE_START_TIME)
+        return sched[SCHEDULE_COLUMNS]
+
+    raw = pd.read_csv(path)
+    if not set(SCHEDULE_COLUMNS) <= set(raw.columns):
+        raise ValueError(f"{SCHEDULE_FILENAME} must have columns {','.join(SCHEDULE_COLUMNS)}")
+    times = pd.to_numeric(raw["From_Time"], errors="raise")
+    if not (times == times.round()).all():
+        raise ValueError(f"{SCHEDULE_FILENAME}: From_Time must be a whole timestep")
+
+    seen: Dict[Tuple[int, int], bool] = {}
+    rows: List[List[int]] = []
+    for navaid_raw, sector_raw, t in zip(raw["Navaid_ID"], raw["Sector_ID"], times.astype(int)):
+        navaid_id = str(navaid_raw).upper().strip()
+        sector_id = str(sector_raw).upper().strip()
+
+        # Same rule as the static allocation: a navaid the graph does not have is dropped.
+        if navaid_id not in ident_to_vid:
+            continue
+        navaid_int = ident_to_vid[navaid_id]
+
+        if (navaid_int, t) in seen:
+            print(f"[WARNING][{SCHEDULE_FILENAME}] - {navaid_id} at From_Time={t} found "
+                  f"multiple times - ignoring")
+            continue
+        seen[(navaid_int, t)] = True
+
+        # A sector's integer is borrowed from one of its navaids. For a sector that exists
+        # only later in the day that rule could hand out an integer another sector already
+        # holds, so refuse to guess until someone decides how such a sector is numbered.
+        if sector_id not in sector_name_to_int:
+            raise ValueError(
+                f"{SCHEDULE_FILENAME}: sector {sector_id} (navaid {navaid_id}, From_Time={t}) "
+                f"does not appear in navaid_sector_assignment.csv. Numbering a sector that "
+                f"exists only after t=0 is not defined yet.")
+
+        rows.append([navaid_int, sector_name_to_int[sector_id], int(t)])
+
+    return pd.DataFrame(rows, columns=SCHEDULE_COLUMNS)
+
 
 def _write_csv(df: pd.DataFrame, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +344,11 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
 
     nsdf = nsdf[["Navaid_ID", "Sector_ID"]].sort_values(["Navaid_ID", "Sector_ID"], kind="mergesort")
 
+    # navaid → sector over time (change-points). Built after nsdf and from its mapping, so
+    # nsdf -- and the file written from it -- is untouched by this.
+    sched = _rekey_schedule(nav_dir, nsdf, ident_to_vid, sector_name_to_int)
+    sched = sched.sort_values(["Navaid_ID", "From_Time"], kind="mergesort")
+
     # airports list
     ap_path = nav_dir / "airports.csv"
     if ap_path.exists():
@@ -392,13 +466,14 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     out_dir = out_root / experiment_name / folder_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write the seven optimizer files
+    # Write the eight optimizer files
     _write_csv(assignment_df,              out_dir / "airplane_flight_assignment.csv")
     _write_csv(airplanes_df,               out_dir / "airplanes.csv")
     _write_csv(airports_df,                out_dir / "airports.csv")
     _write_csv(filed,                      out_dir / "flights.csv")
     _write_csv(edf[["source","target","dist_m"]], out_dir / "graph_edges.csv")
     _write_csv(nsdf,                       out_dir / "navaid_sector_assignment.csv")
+    _write_csv(sched,                      out_dir / SCHEDULE_FILENAME)
     _write_csv(sdf,                        out_dir / "sectors.csv")
 
     # Store mappings for round-trip conversion
@@ -432,7 +507,8 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         "seed": seed_val,
         "files": [
             "airplane_flight_assignment.csv", "airplanes.csv", "airports.csv",
-            "flights.csv", "graph_edges.csv", "navaid_sector_assignment.csv", "sectors.csv"
+            "flights.csv", "graph_edges.csv", "navaid_sector_assignment.csv",
+            SCHEDULE_FILENAME, "sectors.csv"
         ]
     }
     with open(out_dir / "transform_manifest.json", "w") as fh:
