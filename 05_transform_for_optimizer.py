@@ -448,7 +448,18 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
     if not {"aircraft_id","speed_kts"} <= set(acc.keys()):
         raise ValueError("aircrafts.csv must have aircraft_id, speed_kts")
     ac = ac.rename(columns={acc["aircraft_id"]: "aircraft_id", acc["speed_kts"]: "Speed_kts"})
-    ac["Airplane_ID"] = ac["aircraft_id"].astype(str).map(aircraft_to_int)
+    ac["aircraft_id"] = ac["aircraft_id"].astype(str)
+    # aircraft_to_int numbers the airframes that fly at least one leg. aircrafts.csv can list more:
+    # stage 04 keeps every airframe it started with, and one whose whole day was re-specified onto
+    # other airframes ends up flying nothing. Such an airframe is not part of the instance. Mapping
+    # it anyway gave it a NaN id, written as an empty Airplane_ID that every solver fails to parse,
+    # and turned every other id in the file into a float.
+    unknown = sorted(set(aircraft_to_int) - set(ac["aircraft_id"]))
+    if unknown:
+        raise ValueError(f"{len(unknown)} airframe(s) fly legs but have no speed in {ac_path}, "
+                         f"e.g. {unknown[:3]}")
+    ac = ac[ac["aircraft_id"].isin(aircraft_to_int)].copy()
+    ac["Airplane_ID"] = ac["aircraft_id"].map(aircraft_to_int).astype("int64")
     airplanes_df = ac[["Airplane_ID","Speed_kts"]].sort_values("Airplane_ID")
 
     # assignment from flights.csv (only those appearing in filed)
