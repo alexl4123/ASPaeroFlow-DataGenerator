@@ -13,7 +13,7 @@ echo "Job: $SLURM_JOB_NAME  |  ID: $SLURM_JOB_ID"
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate potassco
 
-# V2 dataset -- requires the generator branch `experimental/v2-dataset`.
+# V2 dataset -- requires tag `v2.0.0` or a later commit of branch `feature/sector-schedule-column`.
 # timezone, airport-types and time-granularity all live IN the config, so this run is
 # reproducible from the config alone and needs no CLI overrides.
 python run_pipeline.py --config=default_configs_tg_study/dach_TG60.json --out-root=unparsed_experiment_data_V2_tg_study

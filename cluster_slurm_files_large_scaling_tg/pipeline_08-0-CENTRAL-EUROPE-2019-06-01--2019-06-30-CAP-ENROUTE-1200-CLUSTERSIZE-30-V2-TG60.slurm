@@ -11,7 +11,7 @@ echo "Job: $SLURM_JOB_NAME  |  ID: $SLURM_JOB_ID"
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate potassco
 
-# V2 large-scaling, granularity ladder. Requires branch experimental/v2-dataset.
+# V2 large-scaling, granularity ladder. Requires tag v2.0.0 or a later commit of branch feature/sector-schedule-column.
 # All parameters live in the config; no CLI overrides.
 python run_pipeline.py --config=default_configs_large_scaling_tg/08_0_central_europe_TG60.json --out-root=unparsed_experiment_data_V2_large_scaling_TG60
 
