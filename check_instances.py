@@ -47,6 +47,11 @@ What is checked (a violation fails the run)
             An airframe that flies nothing once got an empty id here, which every
             solver rejects
   D1/F8     consecutive positions are graph-adjacent -- no teleporting
+  P12       every hop takes exactly the edge's cost in timesteps at the flight's
+            airframe speed, max(1, ceil(dist_m / (speed_kts*0.51444) / (3600/TG))),
+            from graph_edges.csv's float dist_m -- the expression and operation order
+            of stage 04's ``_edge_duration_slots`` and of the solvers' edge cost. A
+            hop one timestep off makes the filed plan itself infeasible for a solver
   D3/F7     flights start and end at airport vertices
   C4        no flight starts and ends at the same airport (self-loop)
   D4/F4     two legs of one airframe are separated by >= 1 timestep -- an
@@ -101,8 +106,10 @@ import os
 import re
 import sys
 from collections import defaultdict
+from math import ceil
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 REQUIRED_FILES = (
@@ -179,8 +186,93 @@ def resolve_tg(ds: Path, override: int | None) -> tuple[int, str]:
 
 
 # --------------------------------------------------------------------------
+# edge cost
+# --------------------------------------------------------------------------
+
+def edge_duration_slots(distance_m: float, speed_kts: float, time_granularity: int) -> int:
+    """Timesteps an airframe at ``speed_kts`` needs for an edge of ``distance_m`` metres.
+
+    A copy of ``_edge_duration_slots`` in ``04_simplified_filed_flight_plan_generator.py``:
+    same expression, same operation order, so the floating-point result is the same. The
+    solvers use the same expression (ASPaeroFlow-Optimizer ``common/edge_cost.py``). It is
+    copied rather than imported so that a change to the generator's formula shows up here
+    as a P12 violation instead of silently moving the check with it.
+    """
+    speed_ms = float(speed_kts) * 0.51444
+    if speed_ms <= 0:
+        return 1  # defensive, as in the generator
+    duration_seconds = float(distance_m) / speed_ms
+    slot_sec = 3600.0 / float(time_granularity)
+    slots = int(ceil(duration_seconds / slot_sec))
+    return max(slots, 1)
+
+
+# --------------------------------------------------------------------------
 # the checks
 # --------------------------------------------------------------------------
+
+def check_hop_costs(ctx: str, g: pd.DataFrame, same: pd.Series, dt: pd.Series,
+                    ed: pd.DataFrame, af: pd.DataFrame, apl: pd.DataFrame, tg: int,
+                    rep: Report) -> None:
+    """P12: every hop of a filed plan lasts exactly its edge's cost in timesteps.
+
+    ``g`` is flights.csv sorted by (Flight_ID, Time); ``same`` and ``dt`` mark the rows that
+    continue the previous row's flight and their time step. Only hops between two different
+    vertices joined by an edge of the graph, flown by an airframe with a declared speed, can
+    be costed; the others are D1/F8, P8/F5 and P11 violations and are reported there.
+
+    The cost is computed once per distinct (edge, speed) pair, of which an instance has at
+    most |E| x (number of speed classes), and mapped back to the hops with a merge.
+    """
+    pos = g["Position"].to_numpy(dtype="int64")
+    hop = same.to_numpy() & (pos != np.roll(pos, 1))
+    if not hop.any():
+        return
+
+    # Edge lookup by unordered vertex pair. Later rows win, as they do when stage 04 builds
+    # its networkx graph from the same rows.
+    src = ed["source"].to_numpy(dtype="int64")
+    dst = ed["target"].to_numpy(dtype="int64")
+    base = int(max(src.max(), dst.max(), pos.max())) + 1
+    edge_key = np.minimum(src, dst) * base + np.maximum(src, dst)
+    last = pd.Series(np.arange(len(ed))).groupby(edge_key).last()
+    keys, rows = last.index.to_numpy(), last.to_numpy()
+
+    a, b = np.roll(pos, 1)[hop], pos[hop]
+    hop_key = np.minimum(a, b) * base + np.maximum(a, b)
+    at = np.searchsorted(keys, hop_key).clip(max=len(keys) - 1)
+    on_edge = keys[at] == hop_key
+
+    speed_of = dict(zip(pd.to_numeric(apl[apl.columns[0]], errors="coerce"),
+                        pd.to_numeric(apl[apl.columns[1]], errors="coerce")))
+    plane_of = af.drop_duplicates(subset=["Flight_ID"]).set_index("Flight_ID")["Airplane_ID"]
+    speed = g["Flight_ID"].map(plane_of).map(speed_of).to_numpy(dtype="float64")[hop]
+
+    hops = pd.DataFrame({
+        "Flight_ID": g["Flight_ID"].to_numpy()[hop],
+        "From": a, "To": b,
+        "dt": dt.to_numpy()[hop],
+        "edge": rows[at],
+        "speed": speed,
+    })[on_edge & ~np.isnan(speed)]
+    del a, b, hop_key, at, on_edge, speed
+    if hops.empty:
+        return
+
+    dist = ed["dist_m"].to_numpy(dtype="float64")
+    pairs = hops[["edge", "speed"]].drop_duplicates()
+    pairs = pairs.assign(cost=[edge_duration_slots(dist[e], s, tg)
+                               for e, s in zip(pairs["edge"], pairs["speed"])])
+    hops = hops.merge(pairs, on=["edge", "speed"], how="left")
+    wrong = hops[hops["dt"] != hops["cost"]]
+    wrong_pairs = wrong[["edge", "speed"]].drop_duplicates()
+    rep.check(ctx, "P12 every hop takes its edge cost in timesteps at the airframe's speed",
+              wrong.empty,
+              f"{len(wrong)} of {len(hops)} hops on {len(wrong_pairs)} (edge, speed) pairs, e.g. "
+              + "; ".join(f"flight {r.Flight_ID} {r.From}->{r.To} at {r.speed:g} kts took "
+                          f"{r.dt:.0f}, edge cost {r.cost}"
+                          for r in wrong.head(3).itertuples()))
+
 
 def check_schedule(ctx: str, sch: pd.DataFrame, sec: pd.DataFrame, sc: pd.DataFrame,
                    verts: set, window: int, rep: Report) -> None:
@@ -250,7 +342,9 @@ def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int
         return len(rep.violations) - before
 
     fl = pd.read_csv(ds / "flights.csv")
-    ed = pd.read_csv(ds / "graph_edges.csv")
+    # dist_m parsed as Python's float() parses it, as the solvers read it: P12 rounds it up to
+    # timesteps, where a distance one representable value off can cross a timestep boundary.
+    ed = pd.read_csv(ds / "graph_edges.csv", float_precision="round_trip")
     sec = pd.read_csv(ds / "navaid_sector_assignment.csv")
     sc = pd.read_csv(ds / "sectors.csv")
     apt = set(pd.read_csv(ds / "airports.csv")["Airport_Vertex"])
@@ -322,6 +416,9 @@ def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int
     illegal = [(a, b) for a, b in steps if a != b and (a, b) not in adj]
     rep.check(ctx, "D1/F8 consecutive positions are graph-adjacent", not illegal,
               f"{len(illegal)} non-adjacent hops, e.g. {illegal[:3]}")
+    del adj, prev_p, steps, illegal
+
+    check_hop_costs(ctx, g, same, dt, ed, af, apl, tg, rep)
 
     endpoints = g.groupby("Flight_ID")["Position"].agg(["first", "last"])
     off = int((~endpoints["first"].isin(apt)).sum() + (~endpoints["last"].isin(apt)).sum())

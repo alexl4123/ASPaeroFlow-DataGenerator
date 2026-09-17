@@ -330,6 +330,7 @@ Exit code 0 = all passed, 1 = violations, 2 = usage error, so it gates a generat
 | `P7` | every airport vertex is on the graph |
 | `P8`/`F5` | every flight has exactly one airplane, and it is declared |
 | `D1`/`F8` | consecutive positions are graph-adjacent — no teleporting |
+| `P12` | every hop takes its edge's cost in timesteps at the airframe's speed, `max(1, ceil(dist_m / (speed_kts × 0.51444) / (3600/TG)))`, from the float `dist_m` |
 | `D3`/`F7` | flights start and end at airport vertices |
 | `C4` | no flight returns to its origin airport |
 | `D4`/`F4` | two legs of one airframe are ≥ 1 timestep apart |
