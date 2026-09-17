@@ -57,6 +57,30 @@ def tree_size(p: Path) -> int:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
 
 
+def strip_cr(root: Path) -> int:
+    """Rewrite CRLF as LF in the STAGED tree (never in the source). Returns the file count.
+
+    A generated CSV is written by a single writer, so a CR in the header implies CRLF throughout;
+    probing the first 8 KiB keeps this from re-reading gigabytes. The release verifier rescans
+    every archive entry for CR afterwards, so a miss here cannot reach the upload unnoticed.
+    """
+    n = 0
+    for f in root.rglob("*"):
+        if f.is_symlink() or not f.is_file():
+            continue
+        with open(f, "rb") as fh:
+            if b"\r" not in fh.read(8192):
+                continue
+        st = f.stat()
+        body = f.read_bytes().replace(b"\r\n", b"\n")
+        if b"\r" in body:
+            raise SystemExit(f"{f}: carriage return that is not part of a CRLF; not normalising")
+        f.write_bytes(body)
+        os.utime(f, (st.st_atime, st.st_mtime))
+        n += 1
+    return n
+
+
 def build_one(data_root: Path, tg: int, staging: Path, dry: bool) -> Path | None:
     parsed = data_root / f"experiment_data_V2_large_scaling_TG{tg}"
     overlays = data_root / f"capacity_overlays_V2_large_scaling_TG{tg}"
@@ -125,14 +149,15 @@ def finish_stage(stage: Path, family: str, commit: str | None, docs: list[Path])
         shutil.copy2(d, stage / d.name)
 
 
-def zip_unparsed(root: Path, zp: Path, staging: Path, docs: list[Path]) -> None:
+def zip_unparsed(root: Path, zp: Path, staging: Path, docs: list[Path], lf: bool = False) -> None:
     """Zip an unparsed root; with docs, zip a view of symlinks + documents instead of the root.
 
     zip follows symlinks unless given -y, so the archive stores the real files and the source
-    tree is never written to.
+    tree is never written to. With lf the view holds real copies instead, because line endings
+    are normalised in it and the source must stay untouched.
     """
     zp.unlink(missing_ok=True)
-    if not docs:
+    if not docs and not lf:
         subprocess.run(["zip", "-r", "-q", "-1", str(zp.resolve()), root.name],
                        cwd=root.parent, check=True)
         return
@@ -142,7 +167,14 @@ def zip_unparsed(root: Path, zp: Path, staging: Path, docs: list[Path]) -> None:
     view.mkdir(parents=True)
     try:
         for child in sorted(root.iterdir()):
-            (view / child.name).symlink_to(child.resolve())
+            if lf and child.is_dir():
+                shutil.copytree(child, view / child.name)
+            elif lf:
+                shutil.copy2(child, view / child.name)
+            else:
+                (view / child.name).symlink_to(child.resolve())
+        if lf:
+            print(f"  LF: normalised {strip_cr(view)} files in the staged copy", flush=True)
         for d in docs:
             shutil.copy2(d, view / d.name)
         subprocess.run(["zip", "-r", "-q", "-1", str(zp.resolve()), view.name],
@@ -178,6 +210,11 @@ def main():
                          "before zipping, recording this generator commit")
     ap.add_argument("--docs", type=Path, nargs="*", default=[],
                     help="files copied into the root of every archive (README.md, licences, ...)")
+    ap.add_argument("--lf", action="store_true",
+                    help="rewrite CRLF as LF in the staged tree before zipping (the source tree "
+                         "is never written to). v2.0.0 of the generator wrote CRLF in the sweep's "
+                         "sectors.csv/nominal_capacities.csv and in the unparsed navgraph/edges.csv "
+                         "and DATA_*/aircrafts.csv; 2d69f1f writes LF everywhere.")
     a = ap.parse_args()
 
     data_root = a.data_root.expanduser()
@@ -187,6 +224,9 @@ def main():
     for d in docs:
         if not d.is_file():
             raise SystemExit(f"--docs: not a file: {d}")
+
+    if a.lf and a.unparsed == "single":
+        raise SystemExit("--lf is not implemented for --unparsed single (it zips the source root)")
 
     gran = [int(x) for x in a.granularities.split(",") if x.strip()]
     total_raw = total_zip = 0
@@ -201,6 +241,8 @@ def main():
                 shutil.copytree(data_root / SMALL_ROOT, stage)
         if stage is None or a.dry_run:
             continue
+        if a.lf:
+            print(f"  LF: normalised {strip_cr(stage)} files in the staged tree", flush=True)
         finish_stage(stage, a.family, a.instance_info_commit, docs)
         raw = tree_size(stage); total_raw += raw
         zpath = out_dir / f"{stage.name}.zip"
@@ -228,7 +270,7 @@ def main():
                 raw = tree_size(r); total_raw += raw
                 zp = out_dir / f"{r.name}.zip"
                 print(f"  zipping {human(raw)} -> {zp.name} ...", flush=True)
-                zip_unparsed(r, zp, staging, docs)
+                zip_unparsed(r, zp, staging, docs, a.lf)
                 z = zp.stat().st_size; total_zip += z
                 print(f"  {zp.name}: {human(raw)} raw -> {human(z)} zipped ({raw/z:.1f}x)")
         else:
