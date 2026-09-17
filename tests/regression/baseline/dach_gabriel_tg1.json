@@ -6,11 +6,11 @@
   },
   "files": {
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airplane_flight_assignment.csv": {
-      "bytes": 2143,
+      "bytes": 2152,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "ef68fbd2e24e9311ff62da8a7f756bbff3f9cbc7044eee1fb4295619e0f3c72a",
-        "Flight_ID": "d19b187384ff2505d0b72231bfd7cdcf7c3eca75d38f32e5955028de0569a1ec"
+        "Airplane_ID": "6ec8da65ff93176cebe1797a8c3722bea77c05ed7d2ae6c46d2d2b75e64728fc",
+        "Flight_ID": "d036b2a76f90432a2a93de4c0dd30c1ae56881ba92137e708bf211b0c80f1795"
       },
       "columns": [
         "Airplane_ID",
@@ -22,28 +22,28 @@
         "0,0",
         "1,1"
       ],
-      "sha256": "03bc2849e5b441692e8731ad100ba693ea6453b3c4d6e5c7d72476920c1c1db1",
-      "sha256_sorted": "1b636bbda71be8621e3c89ade7e694177a4a2d806a02e2ef7c26373106a9ee9e"
+      "sha256": "4d5b25f7b1fdb74fbc8fd1802652e9a6102b55b09512c522e112fbeac46aca37",
+      "sha256_sorted": "89c59ee9b67fa6a8990085f5983ffe8d577fa0814a72e87f69be00ca4ebb5d42"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airplanes.csv": {
-      "bytes": 2212,
+      "bytes": 2222,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "4c791890fd7307aef1ac7ff4654ce0a792f81cdd762f608f0b60e11256d6b037",
-        "Speed_kts": "273f727797cc9ed4e8e9f8261d04da003e5787bccbff033589670d5b4426794b"
+        "Airplane_ID": "4d894bd644ab78627f78bf17feb1778296d353c711db117baad1c9b8c12e7d5a",
+        "Speed_kts": "8ec58365a46b4ff1218e23c786af636dc95fd3e5edc161d7dc81993ecb6a92b0"
       },
       "columns": [
         "Airplane_ID",
         "Speed_kts"
       ],
       "kind": "csv",
-      "rows": 230,
+      "rows": 231,
       "sample_rows": [
         "0,480.0",
         "1,430.0"
       ],
-      "sha256": "054d997fb24e8836dad668f83db97d68d71fa3ca763a99eccc7fc81a857e4a1b",
-      "sha256_sorted": "049ce3f34f89ff59224870d88f42303d8e93dd12897a388298f8eb3aad07d637"
+      "sha256": "3875f75633343c18ef4824848197dce0127977f8837422641fb885f0ae06b15b",
+      "sha256_sorted": "1260f19e5ea70416842177a8462d9b8aba6eba2ba1cd36c920b39e6605f0a0cd"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airports.csv": {
       "bytes": 496,
@@ -64,12 +64,12 @@
       "sha256_sorted": "a02a053ac37afc646bb16e2c8555b64c5049328260f8cc5c024263c67cadccd0"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/flights.csv": {
-      "bytes": 29786,
+      "bytes": 30167,
       "cols": 3,
       "column_sha256": {
-        "Flight_ID": "61dd5b1b158ad7989e92aff9b37ea980210f59833d862d6e8769724d8416ed07",
-        "Position": "c9b719762a5485ef5b58a375d2e175179a7846bea9e00c7e1a23322415a2023a",
-        "Time": "b3d4c0d6657f1d65c18837591dc240a13f2c98fa936dfb34a5d3c1b2bc75ef12"
+        "Flight_ID": "053bd71af636f717569aad075e8762bff8859f9a0465ed452813783e7dabb2cb",
+        "Position": "27595767d94e3da4189bc8f4fdfdcd5d1422990aad0e2ff0150009d9276a9e6b",
+        "Time": "7be82a7e60f231e65fd7713ba909399faaeba339df0a50fbbfacdf9c937a149f"
       },
       "columns": [
         "Flight_ID",
@@ -77,13 +77,13 @@
         "Time"
       ],
       "kind": "csv",
-      "rows": 2911,
+      "rows": 2950,
       "sample_rows": [
         "0,65,1",
         "0,66,2"
       ],
-      "sha256": "958b4878c42b64bcec40ee428110d7e72810e27b6ef9237928304c14120209ee",
-      "sha256_sorted": "b46a11f7499ee9182cc22a2314a3c74440aae5dd96be5d5e7ecac1b9f2e2cf5d"
+      "sha256": "e6febe359bfdda7baa0464cd5b20bff68e18b9913385b2d5237b62cab4c618a4",
+      "sha256_sorted": "e798904dc231b93619686d4cad73cddda8115a8dc6e5310c29620a5c452db983"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/graph_edges.csv": {
       "bytes": 63321,
@@ -108,9 +108,9 @@
       "sha256_sorted": "68e6a6d9eb2cc622be20afab606f944fe000317634c9177fd515d90e6cadb279"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/mappings/id_maps.json": {
-      "bytes": 25824,
+      "bytes": 25878,
       "kind": "json",
-      "sha256": "43092f3ef9e3560c86eaba7e2d7508491d5fbbcb5e365d6b90690bef30c5edc0"
+      "sha256": "e42ed51ca00f7061a744acbf777f2738059b02754a8863a75c62adbae4b75b40"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/mappings/vertex_map.csv": {
       "bytes": 23772,
@@ -200,32 +200,32 @@
       "sha256": "dc2d49bada8aa2c96e7537e461368cbd910604f658066034d98affd85efd5cf8"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/aircrafts.csv": {
-      "bytes": 3832,
+      "bytes": 3850,
       "cols": 2,
       "column_sha256": {
-        "aircraft_id": "1bee47857c7d569d0d62514bb756a568a62feff61ca60ad0890c74bf5ff013b1",
-        "speed_kts": "d1ff49e30d93740adb5d372f144c4b4cb8b37b03006eb1b66397768d274a1e7d"
+        "aircraft_id": "fedead9727acccc8d2b6f32f8023877c4203bce42cc48236614b36113c070106",
+        "speed_kts": "a1cf21794b53bf54d9d5a93a0977168dba8f34a15442e5d3e5ca5e91f8b08f83"
       },
       "columns": [
         "aircraft_id",
         "speed_kts"
       ],
       "kind": "csv",
-      "rows": 231,
+      "rows": 232,
       "sample_rows": [
         "AC000001,480.0",
         "AC000002,430.0"
       ],
-      "sha256": "bd5d581df5a5e92ba14003e04686af8005fd7262d8e3fe2843de4edf4193b585",
-      "sha256_sorted": "17d6881a23a982ae7c07ec98452818ee99f2fa434d3a3abf6cf2b5c59585797d"
+      "sha256": "0790a4490abfbb694ee7d0d9b9ff087cf8b27802eb5aed15de4441364609d556",
+      "sha256_sorted": "98300cff1ba15071d3525a1c72feb0c6baf80cf0673a1610b39625eee2e5c174"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/filed_flights.csv": {
-      "bytes": 64024,
+      "bytes": 64941,
       "cols": 3,
       "column_sha256": {
-        "Flight_ID": "ce1b3dc8d5e8cf9c724172ba103406ba0b30ed04aabe60e76cd2808923578f85",
-        "Position": "fd67f96270950c2110fb8eeb1581a3a07bf6fb8bdf3cbc8e2d610593f6a56de4",
-        "Time": "ebf1635ab318fea890deefa23b34af9963620eda27b02d05b31f0e26ea62dc0b"
+        "Flight_ID": "70c826b4a44ffc189446842e8dc9f3df952bd983423adf0af22602820b23490f",
+        "Position": "0df44612fe0eb2da5e2ba8a5b8c3a4a3356ffde44ad9e0c3c6a18de575c0c4a5",
+        "Time": "afe29f8a8bb2be7ea8d40a1e3a07bb600f9c18f96b84e224f485aeb18e629067"
       },
       "columns": [
         "Flight_ID",
@@ -233,28 +233,28 @@
         "Time"
       ],
       "kind": "csv",
-      "rows": 2911,
+      "rows": 2950,
       "sample_rows": [
         "F0000002,EBLG,1",
         "F0000002,SPI46_FL300,2"
       ],
-      "sha256": "4e129278e29e617ea089eff73e5647b2ffdd6181ecb6a947e84768b2b102665b",
-      "sha256_sorted": "c52bae3ef8671c61ee07536db598fd7668420d3d720e20e7a8d3db88e7caa43c"
+      "sha256": "1217e3c9bfb30a04523010decbd5300a917691a24061f13ef4329655762bdcc9",
+      "sha256_sorted": "3eda22bc5816ef7cea9b853fe802d0b9caa9958f6a2e366d242774e240335ae4"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/flights.csv": {
-      "bytes": 23407,
+      "bytes": 23404,
       "cols": 10,
       "column_sha256": {
         "_lineno": "096b0792be79053300b69433a7ba09a6027044a8b125aa067ccf4446660a889d",
-        "aircraft_id": "7a2c3bdf2d5eec7895996261d073c5e825bc054589bd5b4a2c738a3b1d307649",
-        "departure_time": "f8f9bcc62a95919a7e4221b5a4bd4681a6673df50a09f9e2bba7a44034a67bab",
-        "destination": "b9e42de9f4fb22de2a9c3f6280b97d98634c71a884baecc1ee48caa6c7d5dab9",
-        "dst": "b9e42de9f4fb22de2a9c3f6280b97d98634c71a884baecc1ee48caa6c7d5dab9",
+        "aircraft_id": "af5dc5570edf74c2a420c8228bc757212ec7443c775579a6eeb3a2bafc51bd11",
+        "departure_time": "876f85c9174fec76456c7aab1c0e6dfb6b55e89b5c7612a45046f33f9370d448",
+        "destination": "81d1a66791db13200b279d75c611ba4de60c582ff6fa8ad4dfaf53a3a95aa098",
+        "dst": "81d1a66791db13200b279d75c611ba4de60c582ff6fa8ad4dfaf53a3a95aa098",
         "flight_id": "2402c548a4b7ed81066edf9ac724c0e596ed4040b48b16046a534103c8ed9c44",
-        "origin": "0d72e8349ebef403894dccc6a4d7a5e5fe354b28f143831dc07dbd809e3692ed",
+        "origin": "ea7298a9cc609465b5b0ccba55032d90de872f91d44ec0f57c0b2bec1b610ce9",
         "speed_kts": "12dced8e6a550cf96044976a5063a8d7d70e201095fde1e103f76dfc2d59e581",
-        "src": "0d72e8349ebef403894dccc6a4d7a5e5fe354b28f143831dc07dbd809e3692ed",
-        "start_slot": "0118895014bc7868df229436c5f8bc9786b09c5b83628f987dbc57ae1dfeedd5"
+        "src": "ea7298a9cc609465b5b0ccba55032d90de872f91d44ec0f57c0b2bec1b610ce9",
+        "start_slot": "3f812fe9a1c8dd07a12db4e74c9a3351e5e980822f0736542ab2d300369fd9c1"
       },
       "columns": [
         "flight_id",
@@ -274,8 +274,8 @@
         "F0000001,AC000001,EDDK,EDDH,2019-06-01 01:05:08-01:00,2,EDDK,EDDH,1,480.0",
         "F0000002,AC000002,EBLG,EDGE,2019-06-01 01:19:41-01:00,3,EBLG,EDGE,1,430.0"
       ],
-      "sha256": "ebd5c735b14ac54bf3a4e490a96ae1029907fad6d02da1dd21093e95398cb438",
-      "sha256_sorted": "5862c60cba59616f47af122a69114a24c1b42e47a64a05197afa7e1803e95e11"
+      "sha256": "e44701f93d232acb0be8e2be7c74ee2c709a4264d5bcca092c135330186d95ec",
+      "sha256_sorted": "eb840256773bbe049d7a9513cc90ba1a95588e491f50179c2698d50a4892240b"
     },
     "unparsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/DATA_S300_42/run_config.json": {
       "bytes": 289,
