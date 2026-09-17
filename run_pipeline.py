@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Iterable, List, Sequence, Tuple
+import os
 import shlex
 import sys
 import shutil
@@ -305,7 +306,30 @@ def parse_args() -> argparse.Namespace:
 # -------------------------
 # main
 # -------------------------
+#: The hash seed every run uses unless the caller sets PYTHONHASHSEED. Iterating a set of
+#: strings follows it, and the published V2 datasets were generated without pinning it, which
+#: made the legs stage 04 re-specifies differ between runs. Pinned, a run is byte-reproducible.
+DEFAULT_HASH_SEED = "0"
+
+
+def pin_hash_seed() -> None:
+    """Re-execute this interpreter once with PYTHONHASHSEED set, unless the caller set it.
+
+    The seed is read at interpreter start, so it cannot be changed from inside the running
+    process; every stage runs in this process, so pinning it here covers stages 00-04.
+    An explicit value, including "random", is respected.
+    """
+    if "PYTHONHASHSEED" in os.environ:
+        return
+    env = dict(os.environ, PYTHONHASHSEED=DEFAULT_HASH_SEED)
+    argv = list(getattr(sys, "orig_argv", [sys.executable, *sys.argv]))
+    sys.stdout.flush()
+    os.execve(sys.executable, argv, env)
+
+
 def main():
+    pin_hash_seed()
+    print(f"[hash-seed] PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}")
     a = parse_args()
 
     if a.list_stage_impls:

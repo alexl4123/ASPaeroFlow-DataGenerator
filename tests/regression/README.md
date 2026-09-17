@@ -32,6 +32,16 @@ gate a refactor directly.
 
 ## The determinism question: verdict **(B)**, with one qualification
 
+> **Update, 2026-09-17.** The section below predates the rotation-continuity rewrite of stage 04.
+> After that rewrite the hash seed no longer only reordered `aircrafts.csv`: `_fresh_leg` drew a
+> replacement leg's origin by index from `list(airport_vs)`, a set of identifiers, so the drawn
+> airports themselves changed with the seed (checked: one EAST-ASIA-3x3 leg under
+> `PYTHONHASHSEED=1/2/3` got three different origin/destination pairs). The published V2 datasets
+> were generated with the seed unpinned. Fixed since: `_fresh_leg` draws from
+> `sorted(airport_vs)`, stage 05 numbers edge-less vertices in `vertices.csv` order, and
+> `run_pipeline.py` re-executes itself with `PYTHONHASHSEED=0` unless the caller sets it. Seeds 1,
+> 2 and unset now give byte-identical trees. The harness keeps exporting the seed.
+
 **The generator is byte-reproducible, once `PYTHONHASHSEED` is pinned, modulo absolute
 paths recorded in its JSON side-files.** Without that pin, exactly one artefact —
 `aircrafts.csv` — comes out with its rows in a different order; nothing else varies,

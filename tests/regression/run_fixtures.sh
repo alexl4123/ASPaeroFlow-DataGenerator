@@ -16,10 +16,9 @@
 # tree silently produces different output (README, convention ④).  Any non-zero exit
 # from any stage aborts the script.
 #
-# PYTHONHASHSEED is pinned.  Stage 04 iterates a Python set
-# (04_simplified_filed_flight_plan_generator.py:634), which makes the row order of
-# aircrafts.csv depend on string hash randomisation.  Pinning the seed makes the
-# whole pipeline byte-reproducible; see tests/regression/README.md.
+# PYTHONHASHSEED is pinned.  run_pipeline.py pins it itself now, and stages 04/05 no
+# longer iterate sets where order reaches the output; the export stays so that every
+# stage run directly by this script sees the same seed.  See tests/regression/README.md.
 
 set -Eeuo pipefail
 

@@ -356,7 +356,9 @@ def _fresh_leg(G_spd, start, window, airport_vs, origin_weight, dest_weight, rng
     most ``max_tries`` origins, each with a bounded destination draw, then one sweep that
     also allows an earlier departure.
     """
-    cands = list(airport_vs)
+    # Sorted: airport_vs is a set of identifiers, and iterating a set of strings follows Python's
+    # per-process hash seed, so the index drawn below would pick a different airport per run.
+    cands = sorted(airport_vs, key=str)
     if not cands:
         return None
     w = np.array([float(origin_weight.get(v, 0.0)) + 1e-9 for v in cands], dtype=float)

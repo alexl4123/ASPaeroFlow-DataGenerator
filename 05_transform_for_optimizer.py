@@ -227,7 +227,9 @@ def transform_one_sample(exp_in: Path, data_dir: Path, out_root: Path, experimen
         targets.append(ident_to_vid[target])
         dist_ms.append(dist_m)
 
-    missing_vertices = list(set(ident_to_vid_2.keys()).difference(set(ident_to_vid.keys())))
+    # Vertices on no edge get the next ids in vertices.csv order. (A set difference here numbered
+    # them in the order of Python's per-process hash seed.)
+    missing_vertices = [v for v in ident_to_vid_2 if v not in ident_to_vid]
     for missing_vertex in missing_vertices:
         if missing_vertex not in ident_to_vid:
             ident_to_vid[missing_vertex] = cur_vid
