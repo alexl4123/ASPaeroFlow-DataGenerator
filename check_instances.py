@@ -41,6 +41,11 @@ What is checked (a violation fails the run)
   P6b/F6    every Position is a navaid the instance declares
   P7        every airport vertex is on the graph
   P8/F5     every flight is assigned to exactly one declared airplane
+  P11       airplanes.csv is what the solvers can parse and nothing more: every
+            Airplane_ID is a non-empty integer, every speed is positive, no id is
+            declared twice, and every declared airplane flies at least one flight.
+            An airframe that flies nothing once got an empty id here, which every
+            solver rejects
   D1/F8     consecutive positions are graph-adjacent -- no teleporting
   D3/F7     flights start and end at airport vertices
   C4        no flight starts and ends at the same airport (self-loop)
@@ -335,6 +340,24 @@ def check_dataset(ds: Path, tg: int, rep: Report, ctx: str | None = None) -> int
     undeclared_ac = set(af["Airplane_ID"]) - set(apl[apl.columns[0]])
     rep.check(ctx, "P8/F5 every airplane used is declared", not undeclared_ac,
               f"{len(undeclared_ac)} undeclared airplanes")
+
+    # P11: airplanes.csv as the solvers parse it. Read as text, because pandas would turn an
+    # empty id into NaN and the whole id column into floats, and hide exactly what breaks them.
+    raw_apl = pd.read_csv(ds / "airplanes.csv", dtype=str, keep_default_na=False)
+    id_col, speed_col = raw_apl.columns[0], raw_apl.columns[1]
+    bad_ids = raw_apl.loc[~raw_apl[id_col].str.fullmatch(r"\d+"), id_col]
+    rep.check(ctx, "P11 every Airplane_ID is a non-empty integer", bad_ids.empty,
+              f"{len(bad_ids)} of {len(raw_apl)} rows, e.g. {bad_ids.head(3).tolist()}")
+    speeds = pd.to_numeric(raw_apl[speed_col], errors="coerce")
+    rep.check(ctx, "P11 every airplane speed is a positive number", bool((speeds > 0).all()),
+              f"{int((~(speeds > 0)).sum())} rows without a positive speed")
+    dup_ids = raw_apl.loc[raw_apl[id_col].duplicated(), id_col]
+    rep.check(ctx, "P11 no Airplane_ID is declared twice", dup_ids.empty,
+              f"{len(dup_ids)} repeated, e.g. {dup_ids.head(3).tolist()}")
+    declared_ids = {int(v) for v in raw_apl[id_col] if v.isdigit()}
+    idle = declared_ids - {int(v) for v in af["Airplane_ID"]}
+    rep.check(ctx, "P11 every declared airplane flies at least one flight", not idle,
+              f"{len(idle)} airplanes fly nothing, e.g. {sorted(idle)[:3]}")
 
     # A leg must start at least one whole timestep after the previous one ends
     # (arrive t=5, depart t>=6). Sharing the boundary slot puts the airframe at
