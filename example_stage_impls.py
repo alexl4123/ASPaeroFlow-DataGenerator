@@ -174,7 +174,7 @@ class FlatCapacitySectors(SectorCapacityStage):
             rows = list(csv.reader(fh))
         header, body = rows[0], rows[1:]
         with open(path, "w", newline="") as fh:
-            w = csv.writer(fh)
+            w = csv.writer(fh, lineterminator="\n")
             w.writerow(header)
             for row in body:
                 w.writerow([row[0], cap])

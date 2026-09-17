@@ -877,7 +877,7 @@ class FiledFlightPlanGenerator(FiledFlightPlanStage):
             group.to_csv(flights, args.data_dir / "flights.csv", index=False)
 
             with group.open(args.data_dir / "aircrafts.csv", mode="w", newline="") as file:
-                writer = csv.writer(file)
+                writer = csv.writer(file, lineterminator="\n")   # LF, as group.to_csv writes
                 writer.writerow(["aircraft_id", "speed_kts"])
                 writer.writerows(aircraft_speed.items())
 

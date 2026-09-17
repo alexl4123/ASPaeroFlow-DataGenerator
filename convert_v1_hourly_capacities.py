@@ -39,7 +39,7 @@ def convert(path: Path, tg: int, dry: bool) -> tuple[int, int, int]:
     if not dry:
         tmp = path.with_suffix(".csv.tmp")
         with open(tmp, "w", newline="") as fh:
-            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()), lineterminator="\n")
             w.writeheader()
             w.writerows(rows)
         tmp.replace(path)

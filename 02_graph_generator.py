@@ -962,7 +962,7 @@ def write_vertices_csv(df: pd.DataFrame, out_dir: Path):
 def write_edges_csv(edges: List[Tuple[int,int,float]], out_dir: Path, idents: List[str]):
     p = out_dir / "edges.csv"
     with atomic_open(p, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")   # LF, as pandas writes every other CSV
         w.writerow(["V0","V1","D"])
         for i,j,d in edges:
             if j < i:

@@ -111,7 +111,7 @@ def write_sectors(path: Path, capacity: int) -> None:
         header = next(r)
         ids = [row[0] for row in r if row]
     with open(path, "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")   # LF, as pandas writes every other CSV
         w.writerow(header)
         for i in ids:
             w.writerow([i, capacity])
@@ -175,7 +175,7 @@ def main() -> int:
 
     # nominal capacities, so the sweep is reproducible and auditable without rerunning this
     with open(out_root / "nominal_capacities.csv", "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["dataset", "nominal_capacity", "time_granularity"])
         for d in datasets:
             w.writerow([d.name, noms[d.name], tg])
