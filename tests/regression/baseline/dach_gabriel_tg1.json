@@ -26,24 +26,24 @@
       "sha256_sorted": "1b636bbda71be8621e3c89ade7e694177a4a2d806a02e2ef7c26373106a9ee9e"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airplanes.csv": {
-      "bytes": 2679,
+      "bytes": 2212,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "3c57bac973a3223682b44a617f80ea84bd05fc9cedcc15d8e230564500cc4a1b",
-        "Speed_kts": "b2585caf74e7fd2f4f4b2022b6c1a0835bef448867e3d8b71f7ca6742d740df1"
+        "Airplane_ID": "4c791890fd7307aef1ac7ff4654ce0a792f81cdd762f608f0b60e11256d6b037",
+        "Speed_kts": "273f727797cc9ed4e8e9f8261d04da003e5787bccbff033589670d5b4426794b"
       },
       "columns": [
         "Airplane_ID",
         "Speed_kts"
       ],
       "kind": "csv",
-      "rows": 231,
+      "rows": 230,
       "sample_rows": [
-        "0.0,480.0",
-        "1.0,430.0"
+        "0,480.0",
+        "1,430.0"
       ],
-      "sha256": "8773f9092a08758238a7c7c0b02a21e94e48019e5c0e5d2378ebe32a30116b16",
-      "sha256_sorted": "67c74630dabc745645847bf3893f65f9729aa1a7fdbb2a2104371849bec4dd55"
+      "sha256": "054d997fb24e8836dad668f83db97d68d71fa3ca763a99eccc7fc81a857e4a1b",
+      "sha256_sorted": "049ce3f34f89ff59224870d88f42303d8e93dd12897a388298f8eb3aad07d637"
     },
     "parsed/04-0-DACH-2019-06-01--2019-06-30-CAP-ENROUTE-1200-CLUSTERSIZE-50-GABRIEL-GRAPH-V2-TG1/0000300_SEED42/airports.csv": {
       "bytes": 496,

@@ -608,24 +608,24 @@
       "sha256_sorted": "480a0092d1b338c814ee2c153882dbf20761ac121f768b22b4ebff22abca865d"
     },
     "parsed/30-2-INDIA-4x10-V2/0000050_SEED42/airplanes.csv": {
-      "bytes": 305,
+      "bytes": 246,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "9e28d373ab507d87bf8dd962ac3a6317e7863b4e75a35da9ae09e7b1295d7dba",
-        "Speed_kts": "9f8ea2a859cba32573ee5034e8c8191293ef84723070bf0b79613ea5d9959c30"
+        "Airplane_ID": "b96c2f7cc4d1e8d5563d5963d28256b08ac24153e7d9a8e74cd24b8fd02c5b5f",
+        "Speed_kts": "6de4b9b9434ce259ac8dd99daede094fdccfa107e7302a1347b4625e7b0939de"
       },
       "columns": [
         "Airplane_ID",
         "Speed_kts"
       ],
       "kind": "csv",
-      "rows": 27,
+      "rows": 26,
       "sample_rows": [
-        "0.0,450.0",
-        "1.0,480.0"
+        "0,450.0",
+        "1,480.0"
       ],
-      "sha256": "7a371062182f9fbeecf0f3f8b2e3c4e4133a86945cc5d419e7ab896a70f4d281",
-      "sha256_sorted": "7042642d1237cc0350260e606f98ce0a74d295e26a56bca064ce02e811204513"
+      "sha256": "07cf63e608ff1adfcdc93cd8c104a5e987e04b05640cf2cce8178efefff02e99",
+      "sha256_sorted": "47a56b7344402098b647ac20782233f2a973c518e8d4ea8049f93283eefb7a44"
     },
     "parsed/30-2-INDIA-4x10-V2/0000050_SEED42/airports.csv": {
       "bytes": 39,
@@ -996,24 +996,24 @@
       "sha256_sorted": "145a860cdb187a2d08cd862dfb489b938316ace1085cd6e4ea0da5af2f84ae37"
     },
     "parsed/30-2-INDIA-4x10-V2/0000100_SEED42/airplanes.csv": {
-      "bytes": 554,
+      "bytes": 444,
       "cols": 2,
       "column_sha256": {
-        "Airplane_ID": "0321bc895d5a5fca25adc286d306f33869eba5a56c9bfc8af61c3bacd1f5394b",
-        "Speed_kts": "85f08506011bdaaedaf37410b8b308cd891ceb054309a87e4c20600299de40ae"
+        "Airplane_ID": "25ac1f91a36dda18c27779517d69364e63f6d485069ee25f2a880089df714332",
+        "Speed_kts": "3988f39dc9861484ecb43bc99d93a0dc9e40cc1f91e3e5d94eb6a4bb331dffe1"
       },
       "columns": [
         "Airplane_ID",
         "Speed_kts"
       ],
       "kind": "csv",
-      "rows": 50,
+      "rows": 48,
       "sample_rows": [
-        "0.0,430.0",
-        "1.0,480.0"
+        "0,430.0",
+        "1,480.0"
       ],
-      "sha256": "6d5b0f75f3009f6c5dfd143f737d89ef12da5319cccf33116abfff5f5e7ba884",
-      "sha256_sorted": "d4d966e032987b89b303caad48cd2839a510fcc01fb944f1502a76659871fc87"
+      "sha256": "da6c9ab4c599a765f40db7f5042ec674e5f0750863310ec59f1963f6b5a41383",
+      "sha256_sorted": "44bb00fdc8cebe7162ec21a97f49ecd6a1d56d3dae4c104a377881deba034f5a"
     },
     "parsed/30-2-INDIA-4x10-V2/0000100_SEED42/airports.csv": {
       "bytes": 39,
