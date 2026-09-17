@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 BASELINE_DIR="$HERE/baseline"
 
-: "${SCRATCH:=/tmp/claude-1000/-home-thinklex-Dropbox-2025-phd-2026-28-OpenSky-Symposium-02-JOAS-paper/0e375282-c006-4cf5-9440-2e5311f5ca9e/scratchpad/regression}"
+: "${SCRATCH:=${TMPDIR:-/tmp}/aspaeroflow-regression}"   # override for a different scratch location
 : "${CSV_PATH:=/home/thinklex/Documents/2026_not_for_dropbox/05_ASPaeroFlow_Data/ASPaeroFlow-DataGenerator/flightlist_20190601_20190630.csv}"
 : "${NAVDIR:=/home/thinklex/Documents/2026_not_for_dropbox/05_ASPaeroFlow_Data/ASPaeroFlow-DataGenerator/test_navpoints}"
 : "${PYTHON:=python}"

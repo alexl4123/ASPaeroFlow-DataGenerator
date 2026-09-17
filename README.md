@@ -336,6 +336,8 @@ Exit code 0 = all passed, 1 = violations, 2 = usage error, so it gates a generat
 | `D4`/`F4` | two legs of one airframe are ≥ 1 timestep apart |
 | `D8`/`F10` | an airframe's next leg departs from the airport its previous leg landed at |
 | `P9` | `transform_manifest.json` agrees with the directory name |
+| `P10` | `navaid_sector_schedule.csv` is well formed: whole change-point times inside the window, no duplicate `(Navaid_ID, From_Time)`, every navpoint placed from timestep 0, sectors declared, and timestep 0 agreeing with `navaid_sector_assignment.csv` (checked only where the file exists) |
+| `P11` | `airplanes.csv` is what a solver can parse: integer non-empty `Airplane_ID`, positive speeds, no duplicate id, and every declared airframe flies |
 
 The identifiers are the ones used in `dataset_analysis_JOAS/00_generator_integrity/` and the dev
 log — `P4` here is that `P4`. Where two scripts named the same predicate differently they are
