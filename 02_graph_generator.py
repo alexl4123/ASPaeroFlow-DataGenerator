@@ -1237,6 +1237,7 @@ def ensure_connected(latlonalt: np.ndarray,
         for (cu, cv) in comp_pairs:
             ia, ib, dm = _closest_pair_between_sets(np.asarray(comps[cu]), np.asarray(comps[cv]), latlonalt)
             added.append((int(ia), int(ib), float(dm)))
+        out_edges = list(edges_kept) + added
 
 
     elif method == "closest":
